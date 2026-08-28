@@ -1,0 +1,191 @@
+# ============================================================
+# Python
+# ============================================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python packaging
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+
+
+# ============================================================
+# Environment & Secrets
+# ============================================================
+
+.env
+.env.*
+!.env.example
+
+# API keys / credentials
+*.pem
+*.key
+*.crt
+
+
+# ============================================================
+# IDEs / Editors
+# ============================================================
+
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+
+# ============================================================
+# Audio / Input Data
+# ============================================================
+
+# Never commit user recordings
+data/
+audio/
+recordings/
+uploads/
+inputs/
+
+# Audio formats
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.ogg
+*.aac
+*.webm
+
+
+# ============================================================
+# Generated Output
+# ============================================================
+
+outputs/
+results/
+tmp/
+temp/
+cache/
+
+# Generated JSON responses
+*.json
+
+# IMPORTANT:
+# If you have JSON files that are part of the source/configuration,
+# uncomment the following line and explicitly force-add them:
+#
+# !config/*.json
+
+
+# ============================================================
+# AI Models / Weights
+# ============================================================
+
+# Don't upload large model files to GitHub
+models/
+*.pt
+*.pth
+*.onnx
+*.bin
+*.safetensors
+*.gguf
+*.ggml
+*.ckpt
+
+
+# Hugging Face / Transformers cache
+.huggingface/
+.cache/
+transformers_cache/
+
+
+# Ollama
+# Ollama models should NOT live in the repository
+ollama/
+.ollama/
+
+
+# ============================================================
+# Databases
+# ============================================================
+
+# Local databases / database files
+*.db
+*.sqlite
+*.sqlite3
+
+# SQL Server local files
+*.mdf
+*.ndf
+*.ldf
+
+# Database backups
+*.bak
+*.trn
+
+
+# ============================================================
+# Docker
+# ============================================================
+
+# Local Docker volumes
+docker-data/
+docker-volumes/
+
+# Docker environment files
+docker-compose.override.yml
+
+
+# ============================================================
+# Logs
+# ============================================================
+
+logs/
+*.log
+
+
+# ============================================================
+# OS generated files
+# ============================================================
+
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+
+# ============================================================
+# Project-specific
+# ============================================================
+
+# Runtime files
+runtime/
+sessions/
+jobs/
+
+# Temporary transcription files
+transcripts_tmp/
+
+# Temporary extracted data
+extracted_tmp/
