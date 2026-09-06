@@ -1,0 +1,187 @@
+Audio
+  │
+  ▼
+┌──────────────────────┐
+│ Faster-Whisper        │
+│ large-v3              │
+└──────────┬───────────┘
+           │
+           ▼
+      Raw Transcript
+           │
+           ▼
+┌────────────────────────────┐
+│ Transcript Normalizer      │
+│                            │
+│ Arabic spoken numbers      │
+│ Arabic spoken letters      │
+│ H6 → H6                    │
+│ BMW phonetic forms         │
+└────────────┬───────────────┘
+             │
+             ▼
+      Normalized Text
+             │
+             ▼
+┌────────────────────────────┐
+│ Local LLM                  │
+│ Qwen                       │
+│                            │
+│ Multi-Car Extraction       │
+│ + Correction Handling      │
+└────────────┬───────────────┘
+             │
+             ▼
+┌────────────────────────────┐
+│ Pydantic Validation         │
+└────────────┬───────────────┘
+             │
+             ▼
+        JSON Response
+======================================================================================================
+
+                         AUDIO RECORD
+                              │
+                              ▼
+                    ┌──────────────────┐
+                    │ Faster-Whisper   │
+                    │    large-v3      │
+                    └────────┬─────────┘
+                             │
+                             ▼
+                    TIMESTAMPED SEGMENTS
+                             │
+                             ▼
+                 ┌────────────────────────┐
+                 │ Plate-aware Normalizer │
+                 │                        │
+                 │ • digits               │
+                 │ • spoken letters      │
+                 │ • RTL-safe ordering    │
+                 └───────────┬────────────┘
+                             │
+                             ▼
+                  NORMALIZED SEGMENTS
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │      Qwen       │
+                    │     Local LLM   │
+                    │                 │
+                    │  1. Plates      │
+                    │  2. Vehicle type│
+                    │  3. Notes       │
+                    │  4. Group cars  │
+                    └────────┬────────┘
+                             │
+                             ▼
+                    STRUCTURED JSON
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │     Pydantic    │
+                    │                 │
+                    │ plate required  │
+                    └────────┬────────┘
+                             │
+                    ┌────────┴────────┐
+                    ▼                 ▼
+                  VALID            INVALID
+                    │                 │
+                    ▼                 ▼
+              JSON RESPONSE      ERROR / REVIEW
+
+============================================================================
+Whisper:
+
+Segment 1
+"راء قافعين 7665 هافال H6 GT اسود"
+
+Segment 2
+"به سين ميم 6469 تويوتا باكاب غمارتين ابيض"
+
+
+                 ↓
+
+
+Plate Candidate Detection
+
+Candidate 1
+"راء قافعين 7665"
+
+Candidate 2
+"به سين ميم 6469"
+
+
+                 ↓
+
+
+Plate Normalization
+
+Candidate 1
+"ر ق ع 7665"
+
+Candidate 2
+"ب س م 6469"
+
+
+                 ↓
+
+
+Qwen 3B
+
+Context around candidate 1
+"هافال H6 GT اسود"
+
+Context around candidate 2
+"تويوتا باكاب غمارتين ابيض"
+
+
+                 ↓
+
+
+Final JSON
+
+=========================================
+Whisper
+   ↓
+Timestamped Segments
+   ↓
+Plate Candidate Extraction
+   ↓
+Plate Normalization
+   ↓
+LLM
+   ↓
+Vehicle grouping + type + notes
+   ↓
+Validation
+   ↓
+JSON
+
+======================================================
+ONE AUDIO RECORDING
+        │
+        ▼
+Faster-Whisper large-v3
+        │
+        ▼
+Timestamped Segments
+        │
+        ▼
+Plate Candidate Detection
+        │
+        ▼
+Plate Normalization
+        │
+        ▼
+Qwen 2.5 3B
+        │
+        ▼
+Vehicle Type + Notes
+        │
+        ▼
+Validation / Recovery
+        │
+        ▼
+FINAL JSON ONLY

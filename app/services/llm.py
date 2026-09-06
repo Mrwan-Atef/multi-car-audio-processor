@@ -1,0 +1,104 @@
+import json
+from typing import Any
+
+import httpx
+
+from app.core.config import settings
+
+
+class LLMService:
+
+    def __init__(self) -> None:
+
+        self.base_url = (
+            settings.LLM_BASE_URL.rstrip("/")
+        )
+
+        self.model = settings.LLM_MODEL
+
+    def generate_structured(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        response_schema: dict[str, Any],
+    ) -> dict[str, Any]:
+
+        payload = {
+            "model": self.model,
+            "stream": False,
+            "keep_alive": "10m",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": system_prompt,
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt,
+                },
+            ],
+            "format": response_schema,
+            "options": {
+                "temperature": 0,
+            },
+        }
+
+        try:
+
+            with httpx.Client(
+                timeout=settings.LLM_TIMEOUT
+            ) as client:
+
+                response = client.post(
+                    f"{self.base_url}/api/chat",
+                    json=payload,
+                )
+
+                response.raise_for_status()
+
+        except httpx.TimeoutException as exc:
+
+            raise RuntimeError(
+                "LLM request timed out."
+            ) from exc
+
+        except httpx.HTTPError as exc:
+
+            raise RuntimeError(
+                f"LLM request failed: {exc}"
+            ) from exc
+
+        try:
+
+            data = response.json()
+
+        except json.JSONDecodeError as exc:
+
+            raise RuntimeError(
+                "Ollama returned invalid JSON."
+            ) from exc
+
+        content = (
+            data.get("message", {})
+            .get("content", "")
+            .strip()
+        )
+
+        if not content:
+
+            raise RuntimeError(
+                "LLM returned an empty response."
+            )
+
+        try:
+
+            return json.loads(
+                content
+            )
+
+        except json.JSONDecodeError as exc:
+
+            raise RuntimeError(
+                "LLM returned invalid "
+                "structured JSON."
+            ) from exc

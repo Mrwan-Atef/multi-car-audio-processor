@@ -1,0 +1,247 @@
+larger whisper
+============================================================
+TRANSCRIPT
+============================================================
+[1.22s -> 5.10s] بيطة صوت بيطة صوت خمسة سبعة اربعة خمسة نقر.
+[8.82s -> 11.44s] را را ميم تمانية تسعة تسعة اتنين.
+[16.58s -> 20.34s] را ميم كاف را ميم كاف تلاتة ستة خمسة اربعة.
+[25.34s -> 27.28s] بيه حا بيه حا
+[27.28s -> 28.24s] 1 9 3 5
+[28.24s -> 29.26s] جراش 1 يمين
+[29.26s -> 30.58s] دا نون نون
+[30.58s -> 31.64s] 6 4 4 2
+[31.64s -> 32.82s] جراش 1 يمين
+[33.64s -> 34.74s] دا الهسين
+[34.74s -> 35.80s] 4 7 2 6
+[35.80s -> 37.12s] جراش 1 يمين
+[41.02s -> 42.30s] دا الواو عين
+[42.30s -> 43.36s] 2 5 4 6
+[43.36s -> 44.76s] دا الالف عين
+[44.76s -> 45.64s] 6 2 9 8
+[45.64s -> 47.22s] حا عين حا
+[47.22s -> 48.22s] 50 6 6
+[49.68s -> 52.82s] حنون سين 5385
+[52.82s -> 55.86s] راعي نواو 1626
+[72.78s -> 75.38s] راعي نواو 1626
+[75.38s -> 79.30s] حواوياء 2568 جراش واحد يمين
+[92.00s -> 97.06s] حاينكيف 4731 حابيواو 1935
+[101.96s -> 102.68s] بعميم
+[102.68s -> 103.92s] اتنين تمانية اربعة ثلاث
+[103.92s -> 106.74s] دانون ميم سبعة تسعة ستين
+[106.74s -> 108.26s] راه صوته
+[108.26s -> 110.22s] راه صوته
+[110.22s -> 111.50s] اتنين اربعة اتنين ثلاث
+[111.50s -> 114.40s] الف نون لام عشرة اتنين اربعة نا
+[118.60s -> 120.50s] حسن ياء تلاتين واحد خمس
+[120.50s -> 122.60s] جراش يمين اخر الشهر
+[122.60s -> 124.80s] راه الف راه واحد ثلاث تلاتة واحد
+[124.80s -> 126.08s] جراش يمين اخر الشهر
+[139.16s -> 140.82s] رائل بي
+[140.82s -> 142.90s] رائل بي 6403
+
+============================================================
+FINAL JSON
+============================================================
+{
+  "cars": [
+    {
+      "plate_number": "صنت5745",
+      "vehicle_type": null,    na21
+      "notes": null
+    },
+    {
+      "plate_number": "ررم8992",
+      "vehicle_type": null,
+      "notes": null
+    },
+    {
+      "plate_number": "رمك3654",
+      "vehicle_type": null,
+      "notes": null
+    },
+    {
+      "plate_number": "حبح1935",
+      "vehicle_type": null,
+      "notes": null
+    },
+    {
+      "plate_number": "دنن6442",
+      "vehicle_type": null,
+      "notes": null
+    },
+    {
+      "plate_number": "داس4726",
+      "vehicle_type": null,
+      "notes": null
+    },
+    {
+      "plate_number": "اوع2546",
+      "vehicle_type": null,
+      "notes": null
+    },
+    {
+      "plate_number": "ااع6298",
+      "vehicle_type": null,
+      "notes": null
+    },
+    {
+      "plate_number": "حعح5066",
+      "vehicle_type": null,
+      "notes": null
+    },
+    {
+      "plate_number": "حنس5385",
+      "vehicle_type": null,
+      "notes": null
+    },
+    {
+      "plate_number": "نون1626",
+      "vehicle_type": null,
+      "notes": null
+    },
+    {
+      "plate_number": "نون1626",
+      "vehicle_type": null,
+      "notes": null
+    },
+    {
+      "plate_number": "حوي2568",
+      "vehicle_type": null,
+      "notes": null
+    },
+    {
+      "plate_number": "حسك4731",
+      "vehicle_type": null,
+      "notes": null
+    },
+    {
+      "plate_number": "حبو1935",
+      "vehicle_type": null,
+      "notes": null
+    },
+    {
+      "plate_number": "دنم7960",
+      "vehicle_type": null,
+      "notes": null
+    },
+    {
+      "plate_number": "انل1024",
+      "vehicle_type": null,
+      "notes": null
+    },
+    {
+      "plate_number": "رلب6403",
+      "vehicle_type": null,
+      "notes": null
+    }
+  ]
+}
+=================================================
+cohere model :
+am so happy , i can't believe  
+i tried cohere , it's amazing 
+======================================================================
+TRANSCRIPT
+======================================================================
+ب ط ص ب ط ص خمسة سبعة أربعة خمسة نقل را را ميم تمانية تسعة تسعة اثنين را ميم كاف را ميم كاف تلاتة ستة خمسة أربعة بهي حا بهي حا واحد تسعة تلاتة خمسة جراش واحد يمين دا نون نون ستة أربعة أربعة اثنين
+======================================================================
+PERFORMANCE
+======================================================================
+Inference time: 242.26 sec
+RTFx: 0.60
+
+
+but it didn't complete the record , just about only 30 seconds 
+
+
+Dialectal model :
+
+D:\multi-car-audio-processor>python -m tests.test_dialectal_whisper
+======================================================================
+ARABIC DIALECTAL WHISPER TEST
+======================================================================
+Model: D:\multi-car-audio-processor\models\whisper-large-v3-arabic-dialectal-v2
+Audio: D:\multi-car-audio-processor\tests\sample2.aac
+Device: cpu
+
+Loading processor...
+Loading model...
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights: 100%|███████████████████████████████████████████████████████████| 1259/1259 [00:00<00:00, 1923.94it/s]
+Creating ASR pipeline...
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+
+Transcribing...
+
+[transformers] Using `chunk_length_s` is very experimental with seq2seq models. The results will not necessarily be entirely accurate and will have caveats. More information: https://github.com/huggingface/transformers/pull/20104. Ignore this warning with pipeline(..., ignore_warning=True). To use Whisper for long-form transcription, use rather the model's `generate` method directly as the model relies on it's own chunking mechanism (cf. Whisper original paper, section 3.8. Long-form Transcription).
+[transformers] Passing `generation_config` together with generation-related arguments=({'begin_suppress_tokens', 'suppress_tokens'}) is deprecated and will be removed in future versions. Please pass either a `generation_config` object OR all generation parameters explicitly, but not both.
+[transformers] Ignoring clean_up_tokenization_spaces=True for BPE tokenizer WhisperTokenizer. The clean_up_tokenization post-processing step is designed for WordPiece tokenizers and is destructive for BPE (it strips spaces before punctuation). Set clean_up_tokenization_spaces=False to suppress this warning, or set clean_up_tokenization_spaces_for_bpe_even_though_it_will_corrupt_output=True to force cleanup anyway.
+======================================================================
+TRANSCRIPT
+======================================================================
+بطاسات، بطاسات، خمسة سبعة، أربعة خمسة نا. را راميم، تمانية تسعة تسعة اثنين. راميم كيف؟ را ميم كيف؟ تلاتة ستة خمسة أربعة. بهيحة، بهيحة، واحد تسعة تلاتة خمس، قراش واحد يمين. ده نون نون، ستة أربعة أربعة اثنين، قراش واحد يمين. ده الهيسين، أربعة سبعة اثنين ست، قراش واحد يمين. ده الواو عين، اثنين خمسة أربعة ست، ده الألف عين، ستة اثنين تسعة تمانية. حا عين حا 5066. حا نون سين 5385. راعي موا 1 6 2 6.راعيين واحد و ستة اتنين وست، حوايا اتنين خمسة ستة تمانية، قراش واحد يمين.حاين كيف 4731 حب وو 1935 بعميم 2843 دانون ميم60. راه صوته راه صوته 2423. ألف نول لام 1024 أنا. حسنياء 315. قراش يمين آخر الشهر. راه ألف راه 1331. قراش ي مين آخر الشهر؟ رأي الفرح 1,3,3,1. قراشي مين آخر الشهر؟ رأي البيه؟ رأي البيه 6,4,0,3.
+
+======================================================================
+PERFORMANCE
+======================================================================
+Inference time: 554.36 sec
+
+
+
+
+
+
+
+
+
+
+
+
+
+D:\multi-car-audio-processor>python -m tests.test_cohere_arabic
+======================================================================
+COHERE ARABIC ASR - LONG FORM TEST
+======================================================================
+Model: D:\multi-car-audio-processor\models\cohere-transcribe-arabic-07-2026
+Audio: D:\multi-car-audio-processor\tests\sample2.aac
+Device: cpu
+Dtype:  torch.float32
+
+Loading processor...
+Loading model...
+Loading weights: 100%|████████████████████████████████████████████████████████████| 2150/2150 [00:07<00:00, 299.57it/s]
+
+Loading audio...
+Audio duration: 145.64 seconds
+
+Preparing long-form audio...
+
+Detected 5 audio chunks.
+
+Transcribing...
+This may take several minutes on CPU.
+
+======================================================================
+COMPLETE TRANSCRIPT
+======================================================================
+
+ب ط ص ب ط ص خمسة سبعة أربعة خمسة نقل را را ميم تمانية تسعة تسعة اثنين را ميم كاف را ميم كاف تلاتة ستة خمسة أربعة بهي حا بهي حا واحد تسعة تلاتة خمسة جراش واحد يمين دا نون نون ستة أربعة أربعة اثنين جراش واحد يمين ده اله س اربعة سبعة اتنين ست جراش واحد يمين ده الواو ع اتنين خمسة اربعة ست ده الالف ع ستة اتنين تسعة تمانية ح ع خمسين ستة ست  ح نون سين خمسة تلاتة تمانية خمس راع نون واحد ستة اتنين ست را عين واو واحد سته اثنين سته حوا وياء اتنين خمسه سته تمانيه جراش واحد يمين ح عين كيف اربعه سبعه تلاته واحد ح ب واو واحد تسعه تلاته خمسه بيع ميم اتنين تمانية اربعة تلاتة  د نون ميم سبعة تسعة ستين راه صوت طه  <hesitation> راه صوت طه اتنين اربعة اتنين تلاتة  أ نو لام عشرة اتنين اربعة نات  حاسن يا تلاتين واحد خمس جراش يمين اخر الشهر را ا ر واحد تلات تلاتة واحد جراش يمين اخر الشهر "رالب ب" رالب ب "ستة اربعة زيرو تلاتة"
+
+======================================================================
+PERFORMANCE
+======================================================================
+Audio duration : 145.64 sec
+Inference time : 211.57 sec
+RTFx           : 0.69
+
+
+
+
+
+
+
+
+
+
+
+
