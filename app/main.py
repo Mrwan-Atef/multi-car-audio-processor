@@ -1,23 +1,32 @@
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
-from app.api.routes import router
+from app.api.routes import router, stt_service
+from app.core.config import settings
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    stt_service.load()
+    yield
 
 
 app = FastAPI(
-    title="Multi-Car Audio AI Service",
-    version="1.0.0",
+    title=settings.app_name,
+    version=settings.app_version,
+    lifespan=lifespan,
 )
-
 
 app.include_router(router)
 
 
-@app.get("/")
-def root():
-
+@app.get('/')
+def root() -> dict:
     return {
-        "service": (
-            "multi-car-audio-processor"
-        ),
-        "status": "running",
+        'service': settings.app_name,
+        'version': settings.app_version,
+        'status': 'running',
     }

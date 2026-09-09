@@ -1,142 +1,51 @@
-# from pathlib import Path
+from __future__ import annotations
 
-# from huggingface_hub import snapshot_download
-
-
-# PROJECT_ROOT = Path(__file__).resolve().parents[1]
-# MODELS_DIR = PROJECT_ROOT / "models"
-
-# WHISPER_REPO = "Systran/faster-whisper-large-v3"
-
-
-# def download_whisper() -> None:
-#     destination = MODELS_DIR / "faster-whisper-large-v3"
-
-#     if destination.exists() and (destination / "model.bin").exists():
-#         print("=" * 60)
-#         print("Faster-Whisper large-v3 is already downloaded.")
-#         print("=" * 60)
-#         print(f"Location: {destination}")
-#         return
-
-#     print("=" * 60)
-#     print("Downloading Faster-Whisper large-v3")
-#     print("=" * 60)
-
-#     snapshot_download(
-#         repo_id=WHISPER_REPO,
-#         local_dir=str(destination),
-#     )
-
-#     print("=" * 60)
-#     print("Download complete")
-#     print("=" * 60)
-#     print(f"Model location: {destination}")
-
-
-# if __name__ == "__main__":
-#     MODELS_DIR.mkdir(parents=True, exist_ok=True)
-#     download_whisper()
-
-import shutil
-import subprocess
+import os
 from pathlib import Path
 
 from huggingface_hub import snapshot_download
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MODELS_DIR = PROJECT_ROOT / "models"
-
-WHISPER_REPO = "Systran/faster-whisper-large-v3"
-WHISPER_DIR = MODELS_DIR / "faster-whisper-large-v3"
-
-# Local development model.
-# This can be changed later for production.
-OLLAMA_MODEL = "qwen2.5:7b"
-
-
-def download_whisper() -> None:
-    """
-    Download Faster-Whisper large-v3 into the project models directory.
-    """
-
-    if (WHISPER_DIR / "model.bin").exists():
-        print("\nFaster-Whisper large-v3 already exists.")
-        print(f"Location: {WHISPER_DIR}")
-        return
-
-    print("\n" + "=" * 60)
-    print("Downloading Faster-Whisper large-v3")
-    print("=" * 60)
-
-    MODELS_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
+MODEL_ID = os.getenv(
+    "STT_MODEL_ID",
+    "CohereLabs/cohere-transcribe-arabic-07-2026",
+)
+MODEL_PATH = Path(
+    os.getenv(
+        "STT_MODEL_PATH",
+        "/app/models/cohere-transcribe-arabic-07-2026",
     )
-
-    snapshot_download(
-        repo_id=WHISPER_REPO,
-        local_dir=str(WHISPER_DIR),
-    )
-
-    print("\nWhisper download complete.")
-    print(f"Location: {WHISPER_DIR}")
-
-
-def check_ollama() -> None:
-    """
-    Make sure Ollama is installed and available in PATH.
-    """
-
-    if shutil.which("ollama") is None:
-        raise RuntimeError(
-            "Ollama was not found in PATH.\n"
-            "Install Ollama and restart the terminal before "
-            "running this script again."
-        )
-
-
-def download_llm() -> None:
-    """
-    Download the local Qwen model using Ollama.
-    """
-
-    check_ollama()
-
-    print("\n" + "=" * 60)
-    print(f"Downloading LLM: {OLLAMA_MODEL}")
-    print("=" * 60)
-
-    result = subprocess.run(
-        [
-            "ollama",
-            "pull",
-            OLLAMA_MODEL,
-        ],
-        check=False,
-    )
-
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"Failed to download Ollama model: {OLLAMA_MODEL}"
-        )
-
-    print("\nLLM download complete.")
-    print(f"Model: {OLLAMA_MODEL}")
+)
+HF_TOKEN = (
+    os.getenv("HF_TOKEN")
+    or os.getenv("HUGGINGFACE_HUB_TOKEN")
+    or None
+)
 
 
 def main() -> None:
-    print("=" * 60)
-    print("MULTI-CAR AUDIO PROCESSOR - MODEL SETUP")
-    print("=" * 60)
+    MODEL_PATH.mkdir(parents=True, exist_ok=True)
 
-    download_whisper()
-    download_llm()
+    print("=" * 72)
+    print("Preparing Cohere Arabic STT model")
+    print("=" * 72)
+    print(f"Model ID : {MODEL_ID}")
+    print(f"Local dir: {MODEL_PATH}")
 
-    print("\n" + "=" * 60)
-    print("ALL MODELS ARE READY")
-    print("=" * 60)
+    try:
+        snapshot_download(
+            repo_id=MODEL_ID,
+            local_dir=str(MODEL_PATH),
+            token=HF_TOKEN,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed to download the STT model. "
+            "Check internet access and, if required, set HF_TOKEN "
+            "after accepting the model access terms on Hugging Face."
+        ) from exc
+
+    print("STT model is ready.")
 
 
 if __name__ == "__main__":

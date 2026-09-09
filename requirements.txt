@@ -1,50 +1,18 @@
-# ============================================================
-# Web API
-# ============================================================
-
-fastapi
-uvicorn[standard]
-python-multipart
-
-
-# ============================================================
-# Data Validation
-# ============================================================
-
-pydantic
-
-
-# ============================================================
-# Speech-to-Text
-# ============================================================
-
-
-
-# ============================================================
-# HTTP / Local AI communication
-# ============================================================
-
-httpx
-
-
-# ============================================================
-# Utilities
-# ============================================================
-
-python-dotenv
-
-huggingface_hub
-
-# Arabic models
-
-
-
-transformers>=5.4.0
- torch
- soundfile 
- librosa 
- sentencepiece 
- protobuf 
- accelerate
-
+fastapi==0.141.1
+uvicorn[standard]==0.35.0
+python-multipart==0.0.32
+pydantic==2.11.7
+pydantic-settings==2.10.1
+httpx==0.28.1
+transformers==5.4.0
+torch
+huggingface-hub==1.30.0
+accelerate>=1.10.0,<2.0.0
+soundfile==0.14.0
+librosa>=0.11.0,<0.12.0
+safetensors>=0.6.0,<1.0.0
+numpy>=2.1,<3.0
+sentencepiece>=0.2.0,<1.0.0
+protobuf>=5.29.0,<7.0.0
 torchcodec>=0.3.0
+python-dotenv

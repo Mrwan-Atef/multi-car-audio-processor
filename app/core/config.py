@@ -1,78 +1,48 @@
-import os
 from pathlib import Path
 
-from dotenv import load_dotenv
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+class Settings(BaseSettings):
 
-load_dotenv(
-    PROJECT_ROOT / ".env"
-)
-
-
-class Settings:
-
-    APP_NAME = os.getenv(
-        "APP_NAME",
-        "multi-car-audio-processor",
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
-    APP_VERSION = os.getenv(
-        "APP_VERSION",
-        "1.0.0",
-    )
+    app_name: str = "multi-car-audio-processor"
+    app_version: str = "1.0.0"
+    log_level: str = "INFO"
 
-    DEBUG = (
-        os.getenv(
-            "DEBUG",
-            "true",
-        ).lower()
-        == "true"
-    )
+    stt_model_id: str = "CohereLabs/cohere-transcribe-arabic-07-2026"
+    stt_model_path: str = "models/cohere-transcribe-arabic-07-2026"
+    stt_device: str = "cpu"
+    stt_max_new_tokens: int = 256
 
-    STT_MODEL_PATH = os.getenv(
-        "STT_MODEL_PATH",
-        str(
-            PROJECT_ROOT
-            / "models"
-            / "cohere-transcribe-arabic-07-2026"
-        ),
-    )
+    hf_token: str | None = None
 
-    STT_DEVICE = os.getenv(
-        "STT_DEVICE",
-        "cpu",
-    )
+    ollama_base_url: str = "http://ollama:11434"
+    llm_model: str = "qwen2.5:7b"
+    llm_timeout_seconds: float = 600.0
 
-    STT_COMPUTE_TYPE = os.getenv(
-        "STT_COMPUTE_TYPE",
-        "float32",
-    )
+    upload_dir: str = "/tmp/ai-service/uploads"
+    max_upload_mb: int = 200
 
-    LLM_BASE_URL = os.getenv(
-        "LLM_BASE_URL",
-        "http://localhost:11434",
-    )
+    audio_sample_rate: int = 16000
 
-    LLM_MODEL = os.getenv(
-        "LLM_MODEL",
-        "qwen2.5:7b",
-    )
+    @property
+    def project_root(self) -> Path:
+        return Path(__file__).resolve().parents[2]
 
-    LLM_TIMEOUT = float(
-        os.getenv(
-            "LLM_TIMEOUT",
-            "900",
-        )
-    )
+    @property
+    def model_path(self) -> Path:
+        path = Path(self.stt_model_path)
 
-    MAX_AUDIO_SIZE_MB = int(
-        os.getenv(
-            "MAX_AUDIO_SIZE_MB",
-            "100",
-        )
-    )
+        if path.is_absolute():
+            return path
+
+        return self.project_root / path
 
 
 settings = Settings()

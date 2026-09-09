@@ -1,20 +1,25 @@
-import json
-from typing import Any
+from __future__ import annotations
 
 import httpx
 
 from app.core.config import settings
-
+import json
 
 class LLMService:
-
     def __init__(self) -> None:
-
-        self.base_url = (
-            settings.LLM_BASE_URL.rstrip("/")
-        )
-
-        self.model = settings.LLM_MODEL
+        self.base_url = settings.ollama_base_url.rstrip("/")
+        self.model = settings.llm_model
+    
+    def health(self) -> bool:
+        try:
+            response = httpx.get(
+                f"{self.base_url}/api/tags",
+                timeout=10.0,
+            )
+            response.raise_for_status()
+            return True
+        except httpx.HTTPError:
+            return False
 
     def generate_structured(
         self,
@@ -79,8 +84,14 @@ class LLMService:
             ) from exc
 
         content = (
-            data.get("message", {})
-            .get("content", "")
+            data.get(
+                "message",
+                {},
+            )
+            .get(
+                "content",
+                "",
+            )
             .strip()
         )
 
@@ -99,6 +110,5 @@ class LLMService:
         except json.JSONDecodeError as exc:
 
             raise RuntimeError(
-                "LLM returned invalid "
-                "structured JSON."
+                "LLM returned invalid structured JSON."
             ) from exc

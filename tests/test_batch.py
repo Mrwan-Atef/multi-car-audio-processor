@@ -1,10 +1,10 @@
 import json
 from pathlib import Path
 
-from app.core.config import settings
 from app.services.stt import (
     SpeechToTextService,
 )
+
 from app.services.extraction import (
     VehicleExtractionService,
 )
@@ -27,29 +27,13 @@ def main():
     print("INITIALIZING SERVICES")
     print("=" * 60)
 
-    print(
-        f"Model path: "
-        f"{settings.STT_MODEL_PATH}"
-    )
-
-    print(
-        f"Device: "
-        f"{settings.STT_DEVICE}"
-    )
-
-    print(
-        f"Compute type: "
-        f"{settings.STT_COMPUTE_TYPE}"
-    )
-
-    print()
-
     stt = SpeechToTextService()
 
     extractor = (
         VehicleExtractionService()
     )
 
+    print()
     print("=" * 60)
     print("TRANSCRIPT")
     print("=" * 60)
@@ -67,7 +51,6 @@ def main():
         )
 
     print()
-
     print("=" * 60)
     print("FINAL JSON")
     print("=" * 60)

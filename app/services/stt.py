@@ -1,205 +1,131 @@
+from __future__ import annotations
+
 from pathlib import Path
 
+import numpy as np
+import soundfile as sf
 import torch
-
-from transformers import (
-    AutoProcessor,
-    CohereAsrForConditionalGeneration,
-)
-
-from transformers.audio_utils import load_audio
+from transformers import AutoProcessor, CohereAsrForConditionalGeneration
 
 from app.core.config import settings
-from app.models.transcript import TranscriptSegment
+from app.models.transcript import TranscriptSegment, TranscriptResponse
+from app.services.audio import convert_to_pcm_wav
 
 
-class SpeechToTextService:
+class STTService:
+    def __init__(self) -> None:
+        self.processor = None
+        self.model = None
 
-    def __init__(self):
+    def load(self) -> None:
+        model_path = settings.model_path
 
-        self.model_path = Path(
-            settings.STT_MODEL_PATH
-        )
-
-        if not self.model_path.exists():
+        if not model_path.exists():
             raise FileNotFoundError(
-                f"STT model not found: "
-                f"{self.model_path}"
+                f"STT model not found: {model_path}"
             )
 
-        self.device = (
-            "cuda"
-            if torch.cuda.is_available()
-            and settings.STT_DEVICE != "cpu"
-            else "cpu"
+        self.processor = AutoProcessor.from_pretrained(
+            str(model_path),
+            local_files_only=True,
         )
 
-        self.dtype = (
-            torch.float16
-            if self.device == "cuda"
+        device = settings.stt_device.lower()
+
+        if device == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError(
+                "STT_DEVICE is set to cuda, but CUDA is not available."
+            )
+
+        target_device = "cuda" if device == "cuda" else "cpu"
+
+        dtype = (
+            torch.bfloat16
+            if target_device == "cuda"
             else torch.float32
         )
 
-        print(
-            f"Model path: {self.model_path}"
+        self.model = CohereAsrForConditionalGeneration.from_pretrained(
+            str(model_path),
+            local_files_only=True,
+            torch_dtype=dtype,
+            device_map="auto" if target_device == "cuda" else None,
         )
 
-        print(
-            f"Device: {self.device}"
-        )
-
-        print(
-            f"Dtype: {self.dtype}"
-        )
-
-        print()
-        print(
-            "Loading Cohere processor..."
-        )
-
-        self.processor = (
-            AutoProcessor.from_pretrained(
-                str(self.model_path)
-            )
-        )
-
-        print(
-            "Loading Cohere model..."
-        )
-
-        self.model = (
-            CohereAsrForConditionalGeneration
-            .from_pretrained(
-                str(self.model_path),
-                torch_dtype=self.dtype,
-            )
-        )
-
-        self.model.to(
-            self.device
-        )
+        if target_device == "cpu":
+            self.model.to("cpu")
 
         self.model.eval()
 
-    def transcribe(
-        self,
-        audio_path: str,
-    ) -> list[TranscriptSegment]:
+    def transcribe(self, audio_path: Path) -> TranscriptResponse:
+        if self.processor is None or self.model is None:
+            raise RuntimeError("STT model is not loaded.")
 
-        path = Path(audio_path)
+        wav_path = audio_path.with_suffix(".16k.wav")
 
-        if not path.exists():
-            raise FileNotFoundError(
-                f"Audio file not found: {path}"
-            )
-
-        # ----------------------------------------------------
-        # LOAD AUDIO
-        # ----------------------------------------------------
-
-        audio = load_audio(
-            str(path),
-            sampling_rate=16000,
+        convert_to_pcm_wav(
+            audio_path,
+            wav_path,
+            settings.audio_sample_rate,
         )
 
-        duration = (
-            len(audio) / 16000.0
+        audio, sample_rate = sf.read(
+            str(wav_path),
+            dtype="float32",
+            always_2d=False,
         )
 
-        # ----------------------------------------------------
-        # LONG-FORM PROCESSING
-        # ----------------------------------------------------
+        if audio.ndim == 2:
+            audio = audio.mean(axis=1)
+
+        audio = np.asarray(audio, dtype=np.float32)
 
         inputs = self.processor(
-            audio=audio,
-            sampling_rate=16000,
+            audio,
+            sampling_rate=sample_rate,
             return_tensors="pt",
             language="ar",
         )
 
-        audio_chunk_index = inputs.get(
-            "audio_chunk_index"
-        )
+        device = next(self.model.parameters()).device
+        dtype = next(self.model.parameters()).dtype
 
-        # Move tensor inputs to the model device.
-        inputs = {
-            key: (
-                value.to(
-                    self.device,
-                    dtype=self.dtype,
-                )
-                if torch.is_floating_point(value)
-                else value.to(self.device)
-            )
-            if hasattr(value, "to")
-            else value
-            for key, value in inputs.items()
-        }
+        for key, value in list(inputs.items()):
+            if isinstance(value, torch.Tensor):
+                value = value.to(device=device)
 
-        # ----------------------------------------------------
-        # GENERATE
-        # ----------------------------------------------------
+                if value.is_floating_point():
+                    value = value.to(dtype=dtype)
+
+                inputs[key] = value
 
         with torch.inference_mode():
-
-            outputs = self.model.generate(
+            output_ids = self.model.generate(
                 **inputs,
-                max_new_tokens=256,
+                max_new_tokens=settings.stt_max_new_tokens,
             )
 
-        # ----------------------------------------------------
-        # DECODE LONG-FORM RESULT
-        # ----------------------------------------------------
+        audio_chunk_index = inputs.get("audio_chunk_index")
 
-        if audio_chunk_index is not None:
+        text = self.processor.decode(
+            output_ids,
+            skip_special_tokens=True,
+            audio_chunk_index=audio_chunk_index,
+            language="ar",
+        )[0]
 
-            decoded = self.processor.decode(
-                outputs,
-                skip_special_tokens=True,
-                audio_chunk_index=audio_chunk_index,
-                language="ar",
-            )
+        text = text.strip()
 
-        else:
+        duration = len(audio) / float(sample_rate)
 
-            decoded = self.processor.decode(
-                outputs,
-                skip_special_tokens=True,
-            )
-
-        if isinstance(
-            decoded,
-            list,
-        ):
-            text = " ".join(
-                item.strip()
-                for item in decoded
-                if isinstance(item, str)
-                and item.strip()
-            )
-        else:
-            text = str(decoded).strip()
-
-        if not text:
-            return []
-
-        # ----------------------------------------------------
-        # IMPORTANT
-        #
-        # Cohere gives us the correct text structure, but this
-        # path does not rely on word timestamps.
-        #
-        # Plate detection is based on token order.
-        # ----------------------------------------------------
-
-        return [
-            TranscriptSegment(
-                start=0.0,
-                end=max(
-                    duration,
-                    0.001,
-                ),
-                text=text,
-                words=[],
-            )
-        ]
+        return TranscriptResponse(
+            text=text,
+            segments=[
+                TranscriptSegment(
+                    text=text,
+                    start=0.0,
+                    end=duration,
+                    words=[],
+                )
+            ],
+        )

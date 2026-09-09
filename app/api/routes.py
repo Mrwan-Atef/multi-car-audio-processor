@@ -1,151 +1,102 @@
-import os
-import tempfile
+from __future__ import annotations
 
-from fastapi import (
-    APIRouter,
-    File,
-    HTTPException,
-    UploadFile,
-)
+import asyncio
+import uuid
+from pathlib import Path
+
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.core.config import settings
-from app.services.extraction import (
-    VehicleExtractionService,
-)
-from app.services.stt import (
-    SpeechToTextService,
-)
+from app.services.extraction import VehicleExtractionService
+from app.services.llm import LLMService
+from app.services.stt import STTService
+
+router = APIRouter(prefix='/api/v1', tags=['batch'])
+
+stt_service = STTService()
+extraction_service = VehicleExtractionService()
+llm_service = LLMService()
+INFERENCE_LOCK = asyncio.Lock()
 
 
-router = APIRouter(
-    prefix="/api/v1",
-    tags=["AI"],
-)
-
-
-# ONE STT INSTANCE
-stt_service = SpeechToTextService()
-
-# ONE extraction service
-extraction_service = (
-    VehicleExtractionService()
-)
-
-
-@router.get("/health")
-def health():
+@router.get('/health')
+def health() -> dict:
+    stt_loaded = stt_service.model is not None
+    ollama_reachable = llm_service.health()
 
     return {
-        "status": "ok",
-        "service": (
-            "multi-car-audio-processor"
-        ),
+        'status': 'ok' if stt_loaded and ollama_reachable else 'degraded',
+        'stt_loaded': stt_loaded,
+        'ollama_reachable': ollama_reachable,
+        'llm_model': settings.llm_model,
     }
 
 
-@router.post("/batch/process")
-async def process_batch(
+@router.post('/process')
+async def process_audio(
     file: UploadFile = File(...),
 ):
+    suffix = Path(file.filename or '').suffix.lower() or '.bin'
+    upload_root = Path(settings.upload_dir)
+    upload_root.mkdir(parents=True, exist_ok=True)
 
-    temp_path: str | None = None
+    request_id = uuid.uuid4().hex
+    input_path = upload_root / f'{request_id}{suffix}'
+
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+    total = 0
 
     try:
-
-        suffix = ".wav"
-
-        if file.filename:
-
-            file_suffix = (
-                os.path.splitext(
-                    file.filename
-                )[1]
-            )
-
-            if file_suffix:
-                suffix = file_suffix
-
-        max_bytes = (
-            settings.MAX_AUDIO_SIZE_MB
-            * 1024
-            * 1024
-        )
-
-        total_bytes = 0
-
-        with tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=suffix,
-        ) as temp:
-
-            temp_path = temp.name
-
+        with input_path.open('wb') as destination:
             while True:
-
-                chunk = await file.read(
-                    1024 * 1024
-                )
-
+                chunk = await file.read(1024 * 1024)
                 if not chunk:
                     break
 
-                total_bytes += len(chunk)
-
-                if total_bytes > max_bytes:
-
-                    raise ValueError(
-                        "Audio file is too large."
+                total += len(chunk)
+                if total > max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=(
+                            f'Audio file is larger than '
+                            f'{settings.max_upload_mb} MB.'
+                        ),
                     )
 
-                temp.write(chunk)
+                destination.write(chunk)
 
-        segments = (
-            stt_service.transcribe(
-                temp_path
+        # Model inference is synchronous/heavy. Running it in a thread keeps
+        # the FastAPI event loop responsive for health checks.
+        async with INFERENCE_LOCK:
+            transcript = await asyncio.to_thread(
+                stt_service.transcribe,
+                input_path,
             )
-        )
 
-        result = (
-            extraction_service.extract(
-                segments=segments,
-                audio_path=temp_path,
+            result = await asyncio.to_thread(
+                extraction_service.extract,
+                transcript.segments,
+                str(input_path),
             )
-        )
 
         return result.model_dump()
 
-    except ValueError as exc:
-
+    except HTTPException:
+        raise
+    except FileNotFoundError as exc:
         raise HTTPException(
-            status_code=422,
+            status_code=503,
             detail=str(exc),
         ) from exc
-
     except Exception as exc:
-
-        print(
-            f"AI processing error: {exc}"
-        )
-
         raise HTTPException(
             status_code=500,
-            detail="AI processing failed.",
+            detail=str(exc),
         ) from exc
-
     finally:
-
         await file.close()
-
-        if (
-            temp_path
-            and os.path.exists(
-                temp_path
-            )
-        ):
-
-            try:
-                os.remove(
-                    temp_path
-                )
-            except OSError:
-                pass
+        try:
+            input_path.unlink(missing_ok=True)
+            input_path.with_suffix('.16k.wav').unlink(missing_ok=True)
+        except OSError:
+            pass

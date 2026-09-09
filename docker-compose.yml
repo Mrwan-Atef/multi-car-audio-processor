@@ -1,0 +1,103 @@
+services:
+  ollama:
+    image: ollama/ollama:0.33.3
+    container_name: multi-car-ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      - ollama_models:/root/.ollama
+    expose:
+      - "11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  ollama-init:
+    image: ollama/ollama:0.33.3
+    container_name: multi-car-ollama-init
+    restart: "no"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
+    volumes:
+      - ollama_models:/root/.ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Checking Ollama model: $${LLM_MODEL}"
+
+        until ollama list >/dev/null 2>&1; do
+          echo "Waiting for Ollama..."
+          sleep 2
+        done
+
+        if ollama list | grep -Fq "$${LLM_MODEL}"; then
+          echo "Model $${LLM_MODEL} already exists."
+        else
+          echo "Pulling Ollama model: $${LLM_MODEL}"
+          ollama pull "$${LLM_MODEL}"
+        fi
+
+        echo "Ollama model is ready."
+
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  ai-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: multi-car-ai-service
+    restart: unless-stopped
+
+    environment:
+      APP_NAME: ${APP_NAME:-multi-car-audio-processor}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      STT_MODEL_ID: ${STT_MODEL_ID:-CohereLabs/cohere-transcribe-arabic-07-2026}
+      STT_MODEL_PATH: /app/models/cohere-transcribe-arabic-07-2026
+      STT_DEVICE: ${STT_DEVICE:-cpu}
+      STT_MAX_NEW_TOKENS: ${STT_MAX_NEW_TOKENS:-256}
+
+      HF_TOKEN: ${HF_TOKEN:-}
+
+      OLLAMA_BASE_URL: http://ollama:11434
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-600}
+
+      UPLOAD_DIR: /tmp/ai-service/uploads
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-200}
+      AUDIO_SAMPLE_RATE: ${AUDIO_SAMPLE_RATE:-16000}
+
+    volumes:
+      - stt_models:/app/models
+
+    ports:
+      - "8000:8000"
+
+    depends_on:
+      ollama-init:
+        condition: service_completed_successfully
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-fsS",
+          "http://localhost:8000/api/v1/health"
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 15m
+
+volumes:
+  ollama_models:
+  stt_models:
