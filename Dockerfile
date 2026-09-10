@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:2.12.0-cuda13.0-cudnn9-runtime
+FROM pytorch/pytorch:2.14.0-cuda12.6-cudnn9-runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -16,10 +16,18 @@ RUN apt-get update \
         ffmpeg \
         curl \
         ca-certificates \
+        python3.12-venv \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
-RUN python -m pip install --no-cache-dir --break-system-packages -r requirements.txt
+
+# Create an isolated environment while keeping access to the
+# PyTorch packages already installed in the base image.
+RUN python -m venv --system-site-packages /opt/venv \
+    && /opt/venv/bin/pip install --upgrade pip \
+    && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+
+ENV PATH="/opt/venv/bin:$PATH"
 
 COPY app ./app
 COPY scripts ./scripts
@@ -28,7 +36,12 @@ RUN mkdir -p /app/models /tmp/ai-service/uploads
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=15s --timeout=5s --retries=5 CMD curl -fsS http://localhost:8000/api/v1/health || exit 1
+HEALTHCHECK \
+    --interval=15s \
+    --timeout=5s \
+    --start-period=10m \
+    --retries=5 \
+    CMD curl -fsS http://localhost:8000/api/v1/health || exit 1
 
 # The STT model is downloaded at container startup into the persistent
 # /app/models volume, then the API starts.

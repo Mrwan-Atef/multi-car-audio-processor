@@ -1,13 +1,6 @@
 services:
-  ollama:
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-
+  # Keep Ollama on CPU for the first T4 deployment test. The Cohere
+  # 2B STT model gets the GPU, which avoids unnecessary VRAM contention.
   ai-service:
     environment:
       STT_DEVICE: cuda

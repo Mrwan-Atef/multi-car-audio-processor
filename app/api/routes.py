@@ -22,13 +22,28 @@ INFERENCE_LOCK = asyncio.Lock()
 @router.get('/health')
 def health() -> dict:
     stt_loaded = stt_service.model is not None
+    vad_loaded = (
+        not settings.vad_enabled
+        or stt_service.vad.model is not None
+    )
     ollama_reachable = llm_service.health()
 
     return {
-        'status': 'ok' if stt_loaded and ollama_reachable else 'degraded',
+        'status': (
+            'ok'
+            if stt_loaded and vad_loaded and ollama_reachable
+            else 'degraded'
+        ),
         'stt_loaded': stt_loaded,
+        'vad_loaded': vad_loaded,
         'ollama_reachable': ollama_reachable,
         'llm_model': settings.llm_model,
+        'timing': {
+            'enabled': settings.vad_enabled,
+            'reference': 'recording_start',
+            'unit': 'milliseconds',
+            'native_asr_timestamps': False,
+        },
     }
 
 
@@ -77,6 +92,7 @@ async def process_audio(
                 extraction_service.extract,
                 transcript.segments,
                 str(input_path),
+                transcript.duration_ms,
             )
 
         return result.model_dump()

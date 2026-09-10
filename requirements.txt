@@ -16,3 +16,5 @@ sentencepiece>=0.2.0,<1.0.0
 protobuf>=5.29.0,<7.0.0
 torchcodec>=0.3.0
 python-dotenv
+
+silero-vad==6.2.1

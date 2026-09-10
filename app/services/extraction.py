@@ -285,6 +285,9 @@ class VehicleExtractionService:
 
                     "context":
                         context,
+
+                    "_candidate":
+                        current,
                 }
             )
 
@@ -430,148 +433,40 @@ class VehicleExtractionService:
             }
 
         system_prompt = """
-أنت مصنف صارم لنوع المركبة لمركبة واحدة فقط.
+أنت محلل دلالي لنوع مركبة واحدة.
 
-مهمتك الوحيدة:
-تحديد vehicle_type من CONTEXT.
+المطلوب:
+حدد هل CONTEXT يحتوي على اسم/فئة/نوع مركبة أم لا.
 
-============================================================
-DEFINITION
-============================================================
+قاعدة القرار:
+1) إذا كان CONTEXT نفسه اسم نوع مركبة واضحًا، فهو vehicle_type.
+2) إذا احتوى CONTEXT على نوع مركبة مع ملاحظات أخرى، استخرج النوع فقط.
+3) إذا كان النص ملاحظة أو اتجاهًا أو حالة أو لونًا أو شركة أو موديلًا فقط، فلا يعتبر vehicle_type.
+4) لا تستخدم whitelist أو blacklist. الأمثلة ليست قائمة مغلقة.
+5) لا تخترع نوعًا غير مدعوم من CONTEXT.
+6) إذا كان هناك خطأ ASR واضح جدًا في اسم نوع المركبة، يمكنك تصحيح الاسم إلى
+   الشكل الصحيح، لكن vehicle_type_source يجب أن يبقى النص الأصلي الموجود في CONTEXT.
+7) إذا كان CONTEXT كلمة واحدة وكانت كلمة تدل بوضوح على فئة مركبة،
+   يجب تصنيفها vehicle_type وعدم نقلها إلى notes.
 
-vehicle_type هو نوع أو فئة المركبة نفسها.
+أمثلة توضيحية فقط:
+CONTEXT: نقل
+=> vehicle_type: نقل
+=> vehicle_type_source: نقل
 
-أمثلة:
-نقل
-فان
-ونيد
-دوكر
-كوستر
-اتوبيس
-شاص
-مصندق
-نقل عام
-قلاب
-ستاريا
-ستاركس
-H1
+CONTEXT: نات
+=> vehicle_type: نقل
+=> vehicle_type_source: نات
 
-هذه أمثلة وليست whitelist.
-أي تعبير عربي أو أجنبي واضح يدل على نوع/فئة المركبة يمكن أن يكون
-vehicle_type.
+CONTEXT: جراش واحد يمين
+=> vehicle_type: null
+=> vehicle_type_source: null
 
-============================================================
-VERY IMPORTANT
-============================================================
+CONTEXT: نقل عام حادث
+=> vehicle_type: نقل عام
+=> vehicle_type_source: نقل عام
 
-إذا كان CONTEXT نفسه عبارة عن نوع مركبة واضح، فيجب إرجاعه
-على أنه vehicle_type.
-
-مثال:
-
-CONTEXT:
-نقل
-
-النتيجة:
-vehicle_type = "نقل"
-vehicle_type_source = "نقل"
-
-ولا تضعه في notes.
-
-مثال آخر:
-
-CONTEXT:
-فان
-
-النتيجة:
-vehicle_type = "فان"
-vehicle_type_source = "فان"
-
-============================================================
-NOT VEHICLE TYPE
-============================================================
-
-هذه ليست vehicle_type:
-
-جراش
-واحد
-يمين
-يسار
-آخر الشارع
-آخر الشهر
-حادث
-مصدومة
-مركونة
-متربة
-متحرك
-
-وكذلك:
-- اللون
-- الشركة المصنعة
-- الموديل
-- حالة المركبة
-- الوصف الإضافي
-
-مثال:
-
-CONTEXT:
-جراش واحد يمين
-
-النتيجة:
-vehicle_type = null
-vehicle_type_source = null
-
-============================================================
-MULTIPLE WORDS
-============================================================
-
-إذا احتوى CONTEXT على نوع مركبة مع معلومات أخرى:
-
-مثال:
-نقل عام حادث
-
-فالـ vehicle_type هو:
-نقل عام
-
-و vehicle_type_source يجب أن يكون:
-نقل عام
-
-ولا تستخرج "حادث" كنوع مركبة.
-
-============================================================
-ASR CORRECTION
-============================================================
-
-يمكن تصحيح خطأ Speech-to-Text واضح جدًا فقط.
-
-مثال:
-
-CONTEXT:
-نات
-
-النتيجة:
-vehicle_type = "نقل"
-vehicle_type_source = "نات"
-
-هذا تصحيح ASR وليس اختراعًا لمعلومة جديدة.
-
-============================================================
-SOURCE
-============================================================
-
-vehicle_type_source يجب أن تكون العبارة الموجودة حرفيًا داخل
-CONTEXT.
-
-============================================================
-NO GUESSING
-============================================================
-
-إذا لم يكن نوع المركبة واضحًا، أرجع:
-
-vehicle_type = null
-vehicle_type_source = null
-
-لا تخترع نوعًا غير موجود في CONTEXT.
+أعد JSON فقط.
 """
 
         user_prompt = (
@@ -587,16 +482,10 @@ vehicle_type_source = null
             "type": "object",
             "properties": {
                 "vehicle_type": {
-                    "type": [
-                        "string",
-                        "null",
-                    ],
+                    "type": "string",
                 },
                 "vehicle_type_source": {
-                    "type": [
-                        "string",
-                        "null",
-                    ],
+                    "type": "string",
                 },
             },
             "required": [
@@ -613,28 +502,90 @@ vehicle_type_source = null
                 response_schema=schema,
             )
 
-        except Exception:
+        except Exception as exc:
 
+            print(
+                f"[QWEN] vehicle-type call failed for "
+                f"context={context!r}: {exc}"
+            )
             result = {}
 
-        if not isinstance(
-            result,
-            dict,
-        ):
-
+        if not isinstance(result, dict):
             result = {}
 
         value = self._clean(
-            result.get(
-                "vehicle_type"
-            )
+            result.get("vehicle_type")
         )
 
         source = self._clean(
-            result.get(
-                "vehicle_type_source"
-            )
+            result.get("vehicle_type_source")
         )
+
+        # ----------------------------------------------------
+        # GENERAL FALLBACK:
+        # If Qwen fails to classify the context, ask a second,
+        # much smaller semantic question. This is not a
+        # whitelist or blacklist.
+        # ----------------------------------------------------
+
+        if not value:
+            retry_system_prompt = """
+أنت تصنف نصًا واحدًا فقط.
+
+هل CONTEXT يمثل اسم نوع/فئة مركبة؟
+
+- إذا نعم: أعد اسم نوع المركبة في vehicle_type.
+- إذا كان هناك خطأ ناتج عن Speech-to-Text وكان التصحيح واضحًا جدًا،
+  صحح الاسم فقط.
+- إذا لا: أعد vehicle_type فارغًا.
+- لا تستخرج الملاحظات.
+- لا تستخرج الشركة المصنعة أو الموديل أو اللون كـ vehicle_type.
+- لا تستخدم whitelist أو blacklist.
+
+أعد JSON فقط.
+"""
+
+            retry_user_prompt = (
+                "CONTEXT:\n"
+                f"{context}\n"
+                "هل هذا نوع مركبة؟"
+            )
+
+            retry_schema = {
+                "type": "object",
+                "properties": {
+                    "vehicle_type": {
+                        "type": "string",
+                    },
+                },
+                "required": [
+                    "vehicle_type",
+                ],
+            }
+
+            try:
+                retry_result = self.llm.generate_structured(
+                    system_prompt=retry_system_prompt,
+                    user_prompt=retry_user_prompt,
+                    response_schema=retry_schema,
+                )
+            except Exception as exc:
+                print(
+                    f"[QWEN] vehicle-type retry failed for "
+                    f"context={context!r}: {exc}"
+                )
+                retry_result = {}
+
+            if isinstance(retry_result, dict):
+                retry_value = self._clean(
+                    retry_result.get("vehicle_type")
+                )
+
+                if retry_value:
+                    value = retry_value
+
+                    # Keep the observed context as evidence.
+                    source = context
 
         # ----------------------------------------------------
         # Apply conservative semantic correction.
@@ -964,6 +915,46 @@ vehicle_type_source = null
         ).strip()
 
     # ========================================================
+    # TIMESTAMPS
+    # ========================================================
+
+    @staticmethod
+    def _timestamp_fields(
+        candidate,
+    ) -> tuple[int, int, int]:
+
+        start_seconds = max(
+            float(candidate.start),
+            0.0,
+        )
+
+        end_seconds = max(
+            float(candidate.end),
+            start_seconds,
+        )
+
+        start_ms = int(
+            round(start_seconds * 1000.0)
+        )
+
+        end_ms = int(
+            round(end_seconds * 1000.0)
+        )
+
+        timestamp_ms = int(
+            round(
+                (start_ms + end_ms) / 2.0
+            )
+        )
+
+        return (
+            timestamp_ms,
+            start_ms,
+            end_ms,
+        )
+
+
+    # ========================================================
     # CORRECTIONS
     # ========================================================
 
@@ -1210,7 +1201,22 @@ vehicle_type_source = null
         self,
         segments: list[TranscriptSegment],
         audio_path: str | None = None,
+        recording_duration_ms: int = 0,
     ) -> VehicleExtractionResponse:
+
+        if recording_duration_ms <= 0:
+            recording_duration_ms = int(
+                round(
+                    max(
+                        (
+                            float(segment.end)
+                            for segment in segments
+                        ),
+                        default=0.0,
+                    )
+                    * 1000.0
+                )
+            )
 
         # ====================================================
         # TOKENIZE
@@ -1233,6 +1239,10 @@ vehicle_type_source = null
         if not candidates:
 
             return VehicleExtractionResponse(
+                recording_duration_ms=max(
+                    int(recording_duration_ms),
+                    0,
+                ),
                 cars=[]
             )
 
@@ -1304,6 +1314,10 @@ vehicle_type_source = null
         if not normalized:
 
             return VehicleExtractionResponse(
+                recording_duration_ms=max(
+                    int(recording_duration_ms),
+                    0,
+                ),
                 cars=[]
             )
 
@@ -1466,10 +1480,25 @@ vehicle_type_source = null
 
                 notes = None
 
+            timestamp_ms, timestamp_start_ms, timestamp_end_ms = (
+                self._timestamp_fields(
+                    context_item["_candidate"]
+                )
+            )
+
             final_cars.append(
                 Vehicle(
                     plate_number=
                         plate_number,
+
+                    timestamp_ms=
+                        timestamp_ms,
+
+                    timestamp_start_ms=
+                        timestamp_start_ms,
+
+                    timestamp_end_ms=
+                        timestamp_end_ms,
 
                     vehicle_type=
                         vehicle_type,
@@ -1496,5 +1525,9 @@ vehicle_type_source = null
         # ====================================================
 
         return VehicleExtractionResponse(
+            recording_duration_ms=max(
+                int(recording_duration_ms),
+                0,
+            ),
             cars=final_cars
         )

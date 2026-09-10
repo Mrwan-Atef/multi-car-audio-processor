@@ -52,14 +52,31 @@ def tokenize_segments(segments: list[TranscriptSegment]) -> list[TranscriptToken
             continue
 
         duration = max(segment.end - segment.start, 0.001)
-        step = duration / len(words)
-        for index, word in enumerate(words):
+
+        # Cohere does not emit native word timestamps. When a future STT
+        # provider supplies them, we preserve those exact timings above.
+        # Otherwise distribute time proportionally to token length instead
+        # of assigning every token the same duration. The weighting remains
+        # intentionally simple so it never pretends to be forced alignment.
+        weights = [
+            max(2, len(word.replace(' ', '')))
+            for word in words
+        ]
+        total_weight = float(sum(weights)) or 1.0
+
+        elapsed_weight = 0.0
+
+        for word, weight in zip(words, weights):
+            start_ratio = elapsed_weight / total_weight
+            elapsed_weight += weight
+            end_ratio = elapsed_weight / total_weight
+
             tokens.append(
                 TranscriptToken(
                     text=word,
                     segment_index=segment_index,
-                    start=segment.start + index * step,
-                    end=segment.start + (index + 1) * step,
+                    start=segment.start + duration * start_ratio,
+                    end=segment.start + duration * end_ratio,
                 )
             )
 
