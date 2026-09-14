@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
-from app.models.candidates import PlateCandidate, SuspiciousCandidate
-from app.models.transcript import TranscriptSegment
+from app.schemas.candidates import PlateCandidate, SuspiciousCandidate
+from app.schemas.transcript import TranscriptSegment
 from app.services.plate_normalizer import (
     clean_transcript_text,
     decode_letter_phrase_scored,

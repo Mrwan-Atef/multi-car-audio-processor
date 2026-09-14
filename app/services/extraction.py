@@ -1,11 +1,13 @@
-from typing import Any
-import re
+from __future__ import annotations
 
-from app.models.response import (
+from typing import Any
+
+from app.schemas.response import (
     Vehicle,
     VehicleExtractionResponse,
 )
-from app.models.transcript import (
+
+from app.schemas.transcript import (
     TranscriptSegment,
 )
 
@@ -25,23 +27,35 @@ from app.services.plate_normalizer import (
 
 
 class VehicleExtractionService:
+    """
+    Deterministic plate extraction + semantic vehicle enrichment.
 
-    def __init__(self):
+    Supported correction commands:
+
+    1. Latest vehicle:
+       تعديل اخر لوحه الي NEW_PLATE
+
+    2. Specific vehicle:
+       تعديل اللوحة OLD_PLATE إلى NEW_PLATE
+
+    Important:
+    - Correction never creates a new vehicle.
+    - Correction only changes plate_number.
+    - Existing timestamp, vehicle_type, and notes are preserved.
+    - Valid plate = exactly 3 Arabic letters + exactly 4 digits.
+    - No zero padding.
+    """
+
+    def __init__(self) -> None:
         self.llm = LLMService()
 
     # ========================================================
-    # BASIC CLEANING
+    # GENERIC HELPERS
     # ========================================================
 
     @staticmethod
-    def _clean(
-        value: Any,
-    ) -> str | None:
-
-        if not isinstance(
-            value,
-            str,
-        ):
+    def _clean(value: Any) -> str | None:
+        if not isinstance(value, str):
             return None
 
         value = " ".join(
@@ -50,8 +64,905 @@ class VehicleExtractionService:
 
         return value or None
 
+    @staticmethod
+    def _compact(value: str | None) -> str:
+        if not isinstance(value, str):
+            return ""
+
+        return "".join(
+            value.split()
+        )
+
+    @staticmethod
+    def _is_modify_command(
+        text: str,
+    ) -> bool:
+        return text.strip() == "تعديل"
+
+    @staticmethod
+    def _is_to_word(
+        text: str,
+    ) -> bool:
+        return text.strip() in {
+            "إلى",
+            "الى",
+        }
+    @staticmethod
+    def _normalize_command_word(text: str) -> str:
+        text = text.strip()
+
+        return {
+            "اخر": "اخر",
+            "آخر": "اخر",
+
+            "لوحه": "لوحه",
+            "لوحة": "لوحه",
+
+            "الي": "الى",
+            "إلى": "الى",
+            "الى": "الى",
+        }.get(text, text)
+
     # ========================================================
-    # NUMBER RUN
+    # STRICT PLATE VALIDATION
+    # ========================================================
+
+    @staticmethod
+    def _is_valid_plate(
+        plate: str | None,
+    ) -> bool:
+        """
+        Valid Arabic vehicle plate:
+
+            3 Arabic letters + 4 digits
+        """
+
+        if not plate:
+            return False
+
+        if len(plate) != 7:
+            return False
+
+        if not plate[-4:].isdigit():
+            return False
+
+        return True
+
+    @classmethod
+    def _normalize_plate_text(
+        cls,
+        text: str,
+    ) -> str | None:
+
+        if not text:
+            return None
+
+        plate = normalize_plate_from_text(
+            text
+        )
+
+        if not cls._is_valid_plate(
+            plate
+        ):
+            return None
+
+        return plate
+
+    # ========================================================
+    # LETTER NORMALIZATION
+    # ========================================================
+
+    @staticmethod
+    def _normalize_letter(
+        token: str,
+    ) -> str | None:
+        """
+        Normalize ASR letter expressions.
+
+        Used as a deterministic decoder for plate-like
+        candidate spans.
+
+        Example:
+            طه -> ط
+        """
+
+        token = token.strip()
+
+        mapping = {
+            "ا": "ا",
+            "أ": "ا",
+            "إ": "ا",
+            "آ": "ا",
+            "الف": "ا",
+            "ألف": "ا",
+
+            "ب": "ب",
+            "به": "ب",
+            "بي": "ب",
+            "باء": "ب",
+
+            "ت": "ت",
+            "تي": "ت",
+            "تاء": "ت",
+
+            "ث": "ث",
+            "ثاء": "ث",
+
+            "ج": "ج",
+            "جيم": "ج",
+
+            "ح": "ح",
+            "حا": "ح",
+            "حاء": "ح",
+
+            "خ": "خ",
+            "خا": "خ",
+            "خاء": "خ",
+
+            "د": "د",
+            "دا": "د",
+            "ده": "د",
+            "دال": "د",
+
+            "ذ": "ذ",
+            "ذال": "ذ",
+
+            "ر": "ر",
+            "را": "ر",
+            "راء": "ر",
+
+            "ز": "ز",
+            "زاي": "ز",
+
+            "س": "س",
+            "سي": "س",
+            "سين": "س",
+
+            "ش": "ش",
+            "شي": "ش",
+            "شين": "ش",
+
+            "ص": "ص",
+            "صا": "ص",
+            "صاد": "ص",
+
+            "ض": "ض",
+            "ضا": "ض",
+            "ضاد": "ض",
+
+            "ط": "ط",
+            "طا": "ط",
+            "طاء": "ط",
+            "طي": "ط",
+            "طه": "ط",
+
+            "ظ": "ظ",
+            "ظا": "ظ",
+            "ظاء": "ظ",
+
+            "ع": "ع",
+            "عا": "ع",
+            "عين": "ع",
+
+            "غ": "غ",
+            "غا": "غ",
+            "غين": "غ",
+
+            "ف": "ف",
+            "فا": "ف",
+            "فاء": "ف",
+
+            "ق": "ق",
+            "قا": "ق",
+            "قاف": "ق",
+
+            "ك": "ك",
+            "كا": "ك",
+            "كاف": "ك",
+
+            "ل": "ل",
+            "لا": "ل",
+            "لام": "ل",
+
+            "م": "م",
+            "مي": "م",
+            "ميم": "م",
+
+            "ن": "ن",
+            "نو": "ن",
+            "نون": "ن",
+
+            "ه": "ه",
+            "ها": "ه",
+            "هاء": "ه",
+
+            "و": "و",
+            "وا": "و",
+            "واو": "و",
+
+            "ي": "ي",
+            "يا": "ي",
+            "ياء": "ي",
+        }
+
+        return mapping.get(token)
+
+    # ========================================================
+    # DIRECT PLATE DECODING
+    # ========================================================
+
+    @classmethod
+    def _decode_plate_tokens(
+        cls,
+        tokens: list[str],
+    ) -> str | None:
+        """
+        Decode a complete plate-like token sequence.
+
+        Expected:
+
+            3 letter units + exactly 4 digits
+
+        This is deliberately deterministic.
+
+        Examples:
+
+            ب طه صاد سبعين ستين
+            -> بطص7060
+
+            ح عين ح سبعين حداشر
+            -> حعح7011
+        """
+
+        if not tokens:
+            return None
+
+        letters: list[str] = []
+        index = 0
+
+        # ----------------------------------------------------
+        # Exactly 3 letters.
+        # ----------------------------------------------------
+
+        while (
+            index < len(tokens)
+            and len(letters) < 3
+        ):
+
+            letter = cls._normalize_letter(
+                tokens[index]
+            )
+
+            if letter is None:
+                break
+
+            letters.append(
+                letter
+            )
+
+            index += 1
+
+        if len(letters) != 3:
+            return None
+
+        # ----------------------------------------------------
+        # Everything after the letters must form exactly
+        # 4 digits.
+        # ----------------------------------------------------
+
+        digits: list[str] = []
+
+        while index < len(tokens):
+
+            value, next_index = (
+                normalize_number_expression(
+                    tokens,
+                    index,
+                )
+            )
+
+            if value is None:
+                return None
+
+            digits.extend(
+                list(value)
+            )
+
+            if len(digits) > 4:
+                return None
+
+            index = next_index
+
+        if len(digits) != 4:
+            return None
+
+        plate = (
+            "".join(letters)
+            + "".join(digits)
+        )
+
+        if not cls._is_valid_plate(
+            plate
+        ):
+            return None
+
+        return plate
+
+    # ========================================================
+    # CANDIDATE REVALIDATION
+    # ========================================================
+
+    @classmethod
+    def _normalize_candidate(
+        cls,
+        candidate: Any,
+    ) -> str | None:
+        """
+        Revalidate a candidate using its original token text.
+
+        Direct deterministic decoding gets priority over the
+        general fuzzy normalizer.
+
+        This is important for cases such as:
+
+            ح عين ح سبعين حداشر
+
+        where the numeric part becomes valid after supporting
+        compound numbers like حداشر.
+        """
+
+        if candidate is None:
+            return None
+
+        text = getattr(
+            candidate,
+            "text",
+            None,
+        )
+
+        if not isinstance(
+            text,
+            str,
+        ):
+            return None
+
+        raw_tokens = text.split()
+
+        direct = cls._decode_plate_tokens(
+            raw_tokens
+        )
+
+        if direct:
+            return direct
+
+        return cls._normalize_plate_text(
+            text
+        )
+
+    # ========================================================
+    # CORRECTION PLATE SEARCH
+    # ========================================================
+
+    @classmethod
+    def _find_correction_plate(
+        cls,
+        tokens: list[TranscriptToken],
+        start: int,
+        end: int,
+    ) -> tuple[
+        str | None,
+        int | None,
+        int | None,
+    ]:
+        """
+        Search a bounded correction span for one complete plate.
+
+        The search is deterministic:
+            3 letter units
+            followed by exactly 4 digits
+        """
+
+        start = max(
+            start,
+            0,
+        )
+
+        end = min(
+            end,
+            len(tokens),
+        )
+
+        if start >= end:
+            return (
+                None,
+                None,
+                None,
+            )
+
+        raw = [
+            token.text.strip()
+            for token in tokens
+        ]
+
+        # ----------------------------------------------------
+        # Try every possible beginning.
+        # ----------------------------------------------------
+
+        for plate_start in range(
+            start,
+            end,
+        ):
+
+            letters: list[str] = []
+
+            index = plate_start
+
+            while (
+                index < end
+                and len(letters) < 3
+            ):
+
+                letter = (
+                    cls._normalize_letter(
+                        raw[index]
+                    )
+                )
+
+                if letter is None:
+                    break
+
+                letters.append(
+                    letter
+                )
+
+                index += 1
+
+            if len(letters) != 3:
+                continue
+
+            # ------------------------------------------------
+            # Parse exactly four digits.
+            # ------------------------------------------------
+
+            digits: list[str] = []
+
+            digit_end = index
+
+            while digit_end < end:
+
+                value, next_index = (
+                    normalize_number_expression(
+                        raw,
+                        digit_end,
+                    )
+                )
+
+                if value is None:
+                    break
+
+                digits.extend(
+                    list(value)
+                )
+
+                if len(digits) > 4:
+                    break
+
+                digit_end = next_index
+
+                if len(digits) == 4:
+                    break
+
+            if len(digits) != 4:
+                continue
+
+            plate = (
+                "".join(letters)
+                + "".join(digits)
+            )
+
+            if cls._is_valid_plate(
+                plate
+            ):
+                return (
+                    plate,
+                    plate_start,
+                    digit_end - 1,
+                )
+
+        # ----------------------------------------------------
+        # Fallback to the normal normalizer.
+        # ----------------------------------------------------
+
+        maximum_window = min(
+            10,
+            end - start,
+        )
+
+        for window_size in range(
+            1,
+            maximum_window + 1,
+        ):
+
+            for window_start in range(
+                start,
+                end - window_size + 1,
+            ):
+
+                window_end = (
+                    window_start
+                    + window_size
+                )
+
+                text = " ".join(
+                    token.text
+                    for token in tokens[
+                        window_start:window_end
+                    ]
+                )
+
+                plate = (
+                    cls._normalize_plate_text(
+                        text
+                    )
+                )
+
+                if plate:
+                    return (
+                        plate,
+                        window_start,
+                        window_end - 1,
+                    )
+
+        return (
+            None,
+            None,
+            None,
+        )
+
+    # ========================================================
+    # CORRECTION DETECTION
+    # ========================================================
+
+    @classmethod
+    def _detect_corrections(
+        cls,
+        tokens: list[TranscriptToken],
+    ) -> list[dict[str, Any]]:
+        """
+        Supported correction formats:
+
+        1. تعديل اخر لوحه الي NEW
+
+        2. تعديل اللوحة OLD إلى NEW
+
+        No other latest-correction form is supported.
+        """
+
+        corrections: list[
+            dict[str, Any]
+        ] = []
+
+        if not tokens:
+            return corrections
+
+        i = 0
+
+        while i < len(tokens):
+
+            if not cls._is_modify_command(
+                tokens[i].text
+            ):
+                i += 1
+                continue
+
+            command_index = i
+
+            # =================================================
+            # LATEST:
+            #
+            # تعديل اخر لوحه الي NEW
+            # =================================================
+
+            if (
+                command_index + 3
+                < len(tokens)
+            ):
+
+                word1 = word1 = cls._normalize_command_word(
+                    tokens[command_index + 1].text
+                )
+
+                word2 = cls._normalize_command_word(
+                    tokens[command_index + 2].text
+                )
+
+                word3 = cls._normalize_command_word(
+                    tokens[command_index + 3].text
+                )
+
+                if (
+                    word1 == "اخر"
+                    and word2 == "لوحه"
+                    and word3 == "الى"
+                ):
+
+                    new_start = (
+                        command_index + 4
+                    )
+
+                    # Search only a local span.
+                    new_end_limit = min(
+                        len(tokens),
+                        new_start + 12,
+                    )
+
+                    # Stop before another command.
+                    new_end = new_end_limit
+
+                    k = new_start
+
+                    while k < new_end_limit:
+
+                        if (
+                            k > new_start
+                            and cls._is_modify_command(
+                                tokens[k].text
+                            )
+                        ):
+                            new_end = k
+                            break
+
+                        k += 1
+
+                    (
+                        new_plate,
+                        plate_start,
+                        plate_end,
+                    ) = cls._find_correction_plate(
+                        tokens,
+                        new_start,
+                        new_end,
+                    )
+
+                    if new_plate:
+
+                        corrections.append(
+                            {
+                                "type": "latest",
+                                "command_index":
+                                    command_index,
+                                "new_plate":
+                                    new_plate,
+                                "new_start":
+                                    plate_start,
+                                "new_end":
+                                    plate_end,
+                                "span_end":
+                                    plate_end,
+                            }
+                        )
+
+                        i = (
+                            plate_end + 1
+                            if plate_end is not None
+                            else command_index + 4
+                        )
+
+                        continue
+
+            # =================================================
+            # SPECIFIC:
+            #
+            # تعديل اللوحة OLD إلى NEW
+            # =================================================
+
+            to_index: int | None = None
+
+            search_end = min(
+                len(tokens),
+                command_index + 25,
+            )
+
+            j = command_index + 1
+
+            while j < search_end:
+
+                text = (
+                    tokens[j]
+                    .text
+                    .strip()
+                )
+
+                # Stop at another command.
+                if (
+                    j > command_index + 1
+                    and cls._is_modify_command(
+                        text
+                    )
+                ):
+                    break
+
+                if cls._is_to_word(
+                    text
+                ):
+                    to_index = j
+                    break
+
+                j += 1
+
+            if to_index is not None:
+
+                # ------------------------------------------------
+                # OLD
+                # ------------------------------------------------
+
+                (
+                    old_plate,
+                    old_start,
+                    old_end,
+                ) = cls._find_correction_plate(
+                    tokens,
+                    command_index + 1,
+                    to_index,
+                )
+
+                if old_plate is None:
+                    i += 1
+                    continue
+
+                # ------------------------------------------------
+                # NEW
+                # ------------------------------------------------
+
+                new_search_end = min(
+                    len(tokens),
+                    to_index + 15,
+                )
+
+                k = to_index + 1
+
+                while k < new_search_end:
+
+                    if (
+                        k > to_index + 1
+                        and cls._is_modify_command(
+                            tokens[k].text
+                        )
+                    ):
+                        new_search_end = k
+                        break
+
+                    k += 1
+
+                (
+                    new_plate,
+                    new_start,
+                    new_end,
+                ) = cls._find_correction_plate(
+                    tokens,
+                    to_index + 1,
+                    new_search_end,
+                )
+
+                if new_plate is None:
+                    i += 1
+                    continue
+
+                corrections.append(
+                    {
+                        "type": "specific",
+                        "command_index":
+                            command_index,
+                        "old_plate":
+                            old_plate,
+                        "new_plate":
+                            new_plate,
+                        "old_start":
+                            old_start,
+                        "old_end":
+                            old_end,
+                        "new_start":
+                            new_start,
+                        "new_end":
+                            new_end,
+                        "span_end":
+                            new_end,
+                    }
+                )
+
+                i = (
+                    new_end + 1
+                    if new_end is not None
+                    else command_index + 1
+                )
+
+                continue
+
+            i += 1
+
+        return corrections
+
+    # ========================================================
+    # CORRECTION TOKEN SPANS
+    # ========================================================
+
+    @staticmethod
+    def _correction_token_indexes(
+        corrections: list[dict[str, Any]],
+    ) -> set[int]:
+
+        indexes: set[int] = set()
+
+        for correction in corrections:
+
+            command_index = correction.get(
+                "command_index"
+            )
+
+            span_end = correction.get(
+                "span_end"
+            )
+
+            if (
+                isinstance(
+                    command_index,
+                    int,
+                )
+                and isinstance(
+                    span_end,
+                    int,
+                )
+                and span_end >= command_index
+            ):
+
+                indexes.update(
+                    range(
+                        command_index,
+                        span_end + 1,
+                    )
+                )
+
+        return indexes
+
+    @staticmethod
+    def _candidate_overlaps_correction(
+        candidate: Any,
+        correction_indexes: set[int],
+    ) -> bool:
+
+        if not correction_indexes:
+            return False
+
+        start = getattr(
+            candidate,
+            "token_start",
+            None,
+        )
+
+        end = getattr(
+            candidate,
+            "token_end",
+            None,
+        )
+
+        if (
+            not isinstance(start, int)
+            or not isinstance(end, int)
+        ):
+            return False
+
+        for index in range(
+            start,
+            end + 1,
+        ):
+
+            if index in correction_indexes:
+                return True
+
+        return False
+
+    # ========================================================
+    # NUMBER / PLATE-LIKE FRAGMENTS
     # ========================================================
 
     @staticmethod
@@ -92,25 +1003,16 @@ class VehicleExtractionService:
             index,
         )
 
-    # ========================================================
-    # LETTER-LIKE TOKEN
-    # ========================================================
-
     @staticmethod
     def _token_has_letter_evidence(
         token: str,
     ) -> bool:
-
-        decoded = decode_token(
-            token,
-            max_letters=3,
+        return bool(
+            decode_token(
+                token,
+                max_letters=3,
+            )
         )
-
-        return bool(decoded)
-
-    # ========================================================
-    # REMOVE BROKEN PLATE-LIKE FRAGMENTS
-    # ========================================================
 
     @classmethod
     def _remove_plate_like_fragments(
@@ -118,48 +1020,26 @@ class VehicleExtractionService:
         tokens: list[TranscriptToken],
     ) -> list[TranscriptToken]:
 
-        """
-        Remove corrupted/incomplete plate-looking fragments
-        from vehicle notes.
-
-        Examples:
-
-            ح ع خمسين ستة ست
-            راع نون واحد ستة اتنين ست
-
-        These are not valid plates, but they clearly look like
-        failed attempts to transcribe another plate.
-
-        IMPORTANT:
-        This function DOES NOT invent a replacement plate.
-        It only prevents the broken fragment from appearing
-        in notes.
-        """
-
         if not tokens:
             return []
 
-        remove = set()
+        remove: set[int] = set()
 
         index = 0
 
         while index < len(tokens):
 
-            digit_count, digit_end = (
-                cls._number_run_end(
-                    tokens,
-                    index,
-                )
+            (
+                digit_count,
+                digit_end,
+            ) = cls._number_run_end(
+                tokens,
+                index,
             )
 
             if digit_count != 4:
                 index += 1
                 continue
-
-            # ------------------------------------------------
-            # Search immediately backward for letter-bearing
-            # tokens.
-            # ------------------------------------------------
 
             start = index - 1
             letter_count = 0
@@ -169,24 +1049,17 @@ class VehicleExtractionService:
                 and index - start <= 6
             ):
 
-                text = tokens[
-                    start
-                ].text
-
                 if not cls._token_has_letter_evidence(
-                    text
+                    tokens[start].text
                 ):
                     break
 
                 letter_count += 1
                 start -= 1
 
-            actual_start = start + 1
-
-            # ------------------------------------------------
-            # Two or more letter-bearing tokens + 4 digits
-            # is suspiciously plate-like.
-            # ------------------------------------------------
+            actual_start = (
+                start + 1
+            )
 
             if (
                 letter_count >= 2
@@ -211,65 +1084,122 @@ class VehicleExtractionService:
         ]
 
     # ========================================================
-    # BUILD VEHICLE CONTEXT
+    # CONTEXT
     # ========================================================
 
     @classmethod
     def _build_vehicle_contexts(
         cls,
         tokens: list[TranscriptToken],
-        normalized: list[dict],
-    ) -> list[dict[str, str]]:
+        normalized: list[dict[str, Any]],
+        corrections: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
 
-        contexts = []
+        contexts: list[
+            dict[str, Any]
+        ] = []
+
+        correction_indexes = (
+            cls._correction_token_indexes(
+                corrections
+            )
+        )
+
+        command_indexes = sorted(
+            {
+                correction[
+                    "command_index"
+                ]
+                for correction in corrections
+                if isinstance(
+                    correction.get(
+                        "command_index"
+                    ),
+                    int,
+                )
+            }
+        )
 
         for i, item in enumerate(
             normalized
         ):
 
-            current = item[
+            candidate = item[
                 "candidate"
             ]
 
             # ------------------------------------------------
-            # Context starts immediately AFTER current plate.
+            # Start after current plate.
             # ------------------------------------------------
 
             start = (
-                current.token_end + 1
+                candidate.token_end
+                + 1
             )
 
             # ------------------------------------------------
-            # Context ends immediately BEFORE next plate.
+            # End before next plate.
             # ------------------------------------------------
 
-            if i + 1 < len(normalized):
+            if i + 1 < len(
+                normalized
+            ):
 
-                next_candidate = (
-                    normalized[
-                        i + 1
-                    ]["candidate"]
-                )
-
-                end = (
-                    next_candidate.token_start
-                )
+                end = normalized[
+                    i + 1
+                ][
+                    "candidate"
+                ].token_start
 
             else:
 
-                end = len(tokens)
-
-            raw_context_tokens = tokens[
-                start:end
-            ]
+                end = len(
+                    tokens
+                )
 
             # ------------------------------------------------
-            # Remove broken plate-looking fragments.
+            # Correction command terminates vehicle context.
+            # ------------------------------------------------
+
+            for command_index in (
+                command_indexes
+            ):
+
+                if (
+                    command_index >= start
+                    and command_index < end
+                ):
+
+                    end = command_index
+                    break
+
+            if end < start:
+                end = start
+
+            filtered_tokens = []
+
+            for token_index, token in enumerate(
+                tokens[start:end],
+                start=start,
+            ):
+
+                if (
+                    token_index
+                    in correction_indexes
+                ):
+                    continue
+
+                filtered_tokens.append(
+                    token
+                )
+
+            # ------------------------------------------------
+            # Remove plate-like fragments.
             # ------------------------------------------------
 
             cleaned_tokens = (
                 cls._remove_plate_like_fragments(
-                    raw_context_tokens
+                    filtered_tokens
                 )
             )
 
@@ -281,786 +1211,575 @@ class VehicleExtractionService:
             contexts.append(
                 {
                     "plate_number":
-                        item["plate_number"],
-
+                        item[
+                            "plate_number"
+                        ],
                     "context":
                         context,
-
                     "_candidate":
-                        current,
+                        candidate,
                 }
             )
 
         return contexts
 
     # ========================================================
-    # GROUND VEHICLE TYPE
+    # SEMANTIC PROMPT
     # ========================================================
 
     @staticmethod
-    def _grounded_vehicle_type(
-        value: str | None,
-        source: str | None,
-        context: str,
-    ) -> str | None:
+    def _semantic_prompt() -> str:
+        return r"""
+أنت طبقة الفهم الدلالي لنظام بيانات مركبات.
 
-        if not value:
-            return None
+حلل سيارة واحدة فقط.
 
-        if not source:
-            return None
+النص الموجود في CONTEXT هو المصدر الوحيد للمعلومات.
 
-        context_compact = (
-            context.replace(
-                " ",
-                "",
-            )
-        )
+أعد أربعة حقول فقط:
+- vehicle_type
+- vehicle_type_evidence
+- notes
+- notes_evidence
 
-        source_compact = (
-            source.replace(
-                " ",
-                "",
-            )
-        )
+RULE 1 — VEHICLE TYPE
 
-        if not source_compact:
-            return None
+vehicle_type هو نوع أو فئة المركبة نفسها فقط.
 
-        # Evidence must come from this exact vehicle context.
-        if source_compact not in context_compact:
-            return None
+أي كلمة أو عبارة واضحة تصف نوع أو فئة المركبة يمكن أن تكون
+vehicle_type.
 
-        return value
+لا تستخدم whitelist.
 
-    # ========================================================
-    # CONSERVATIVE VEHICLE-TYPE CORRECTIONS
-    # ========================================================
+إذا كان نوع المركبة يتكون من أكثر من كلمة، يجب إرجاع
+العبارة الكاملة وليس جزءًا منها.
 
-    @staticmethod
-    def _normalize_vehicle_type(
-        value: str | None,
-        source: str | None,
-        context: str,
-    ) -> tuple[str | None, str | None]:
+مثال:
 
-        value = (
-            value.strip()
-            if isinstance(
-                value,
-                str,
-            )
-            else None
-        )
+CONTEXT = نقل عام
 
-        source = (
-            source.strip()
-            if isinstance(
-                source,
-                str,
-            )
-            else None
-        )
+الصحيح:
+vehicle_type = نقل عام
+vehicle_type_evidence = نقل عام
 
-        context = (
-            context.strip()
-            if isinstance(
-                context,
-                str,
-            )
-            else ""
-        )
+وليس:
+vehicle_type = نقل
 
-        # ----------------------------------------------------
-        # No context => no vehicle type.
-        # ----------------------------------------------------
+مثال:
 
-        if not context:
-            return None, None
+CONTEXT = ونيت
 
-        # ----------------------------------------------------
-        # Deterministic semantic ASR correction:
-        #
-        # "نات" in a vehicle-type context is the observed
-        # ASR form of "نقل".
-        #
-        # IMPORTANT:
-        # This is NOT a plate mapping.
-        # It is only a vehicle-type correction.
-        #
-        # We apply it only when the complete context is the
-        # single token "نات".
-        # ----------------------------------------------------
+الصحيح:
+vehicle_type = ونيت
+vehicle_type_evidence = ونيت
 
-        if context == "نات":
-            return "نقل", "نات"
+مثال:
 
-        # ----------------------------------------------------
-        # Normal grounded Qwen result.
-        # ----------------------------------------------------
+CONTEXT = فان بضاعة
 
-        grounded = (
-            VehicleExtractionService
-            ._grounded_vehicle_type(
-                value,
-                source,
-                context,
-            )
-        )
+إذا كانت العبارة كلها تشير إلى نوع المركبة،
+فأعد العبارة الكاملة.
 
-        if grounded:
-            return grounded, source
+لا تختصر vehicle_type إلى جزء من عبارة أطول.
 
-        return None, None
+RULE 2 — NOT VEHICLE TYPE
 
-    # ========================================================
-    # VEHICLE TYPE
-    #
-    # ONE VEHICLE PER CALL
-    # ========================================================
+الشركة المصنعة، الموديل، اللون، الحالة، الاتجاه، المكان،
+والوصف الإضافي ليست vehicle_type.
 
-    def _extract_vehicle_type_for_car(
-        self,
-        plate_number: str,
-        context: str,
-    ) -> dict[str, str | None]:
+يمكن أن تكون notes.
 
-        if not context:
+RULE 3 — NOTES
 
-            return {
-                "vehicle_type": None,
-                "source": None,
-            }
+notes هي المعلومات المفيدة الأخرى الخاصة بالمركبة
+بعد استثناء vehicle_type.
 
-        system_prompt = """
-أنت محلل دلالي لنوع مركبة واحدة.
+RULE 4 — OWNERSHIP
 
-المطلوب:
-حدد هل CONTEXT يحتوي على اسم/فئة/نوع مركبة أم لا.
+كل جزء مفيد من CONTEXT يجب أن يذهب إلى vehicle_type
+أو notes أو يتم تجاهله.
 
-قاعدة القرار:
-1) إذا كان CONTEXT نفسه اسم نوع مركبة واضحًا، فهو vehicle_type.
-2) إذا احتوى CONTEXT على نوع مركبة مع ملاحظات أخرى، استخرج النوع فقط.
-3) إذا كان النص ملاحظة أو اتجاهًا أو حالة أو لونًا أو شركة أو موديلًا فقط، فلا يعتبر vehicle_type.
-4) لا تستخدم whitelist أو blacklist. الأمثلة ليست قائمة مغلقة.
-5) لا تخترع نوعًا غير مدعوم من CONTEXT.
-6) إذا كان هناك خطأ ASR واضح جدًا في اسم نوع المركبة، يمكنك تصحيح الاسم إلى
-   الشكل الصحيح، لكن vehicle_type_source يجب أن يبقى النص الأصلي الموجود في CONTEXT.
-7) إذا كان CONTEXT كلمة واحدة وكانت كلمة تدل بوضوح على فئة مركبة،
-   يجب تصنيفها vehicle_type وعدم نقلها إلى notes.
+لا تستخدم نفس evidence في الحقلين.
 
-أمثلة توضيحية فقط:
-CONTEXT: نقل
-=> vehicle_type: نقل
-=> vehicle_type_source: نقل
+RULE 5 — EVIDENCE
 
-CONTEXT: نات
-=> vehicle_type: نقل
-=> vehicle_type_source: نات
+vehicle_type_evidence يجب أن تكون العبارة الأصلية حرفياً من CONTEXT.
 
-CONTEXT: جراش واحد يمين
-=> vehicle_type: null
-=> vehicle_type_source: null
+notes_evidence يجب أن تكون العبارة الأصلية حرفياً من CONTEXT.
 
-CONTEXT: نقل عام حادث
-=> vehicle_type: نقل عام
-=> vehicle_type_source: نقل عام
+لا تخترع evidence.
 
-أعد JSON فقط.
+RULE 6 — ASR NORMALIZATION
+
+يمكن تصحيح خطأ Speech-to-Text واضح جداً داخل value
+عندما يكون المقصود واضحاً جداً.
+
+لكن evidence يجب أن تبقى النص الأصلي الموجود حرفياً
+في CONTEXT.
+
+لا تقم بالتصحيح عند الشك.
+
+RULE 7 — NO HALLUCINATION
+
+لا تستخرج plate_number.
+
+لا تغير plate_number.
+
+لا تضيف كلمات غير مدعومة.
+
+لا تخترع نوع مركبة أو ملاحظة.
+
+عند الشك:
+أعد null.
 """
 
-        user_prompt = (
-            "PLATE:\n"
-            f"{plate_number}\n\n"
-            "CONTEXT:\n"
-            f"{context}\n"
-            "CLASSIFY THE CONTEXT NOW.\n"
-            "If the context itself is a clear vehicle type, return it as vehicle_type."
-        )
-
-        schema = {
+    @staticmethod
+    def _semantic_schema() -> dict[str, Any]:
+        return {
             "type": "object",
             "properties": {
                 "vehicle_type": {
-                    "type": "string",
+                    "type": [
+                        "string",
+                        "null",
+                    ],
                 },
-                "vehicle_type_source": {
-                    "type": "string",
+                "vehicle_type_evidence": {
+                    "type": [
+                        "string",
+                        "null",
+                    ],
+                },
+                "notes": {
+                    "type": [
+                        "string",
+                        "null",
+                    ],
+                },
+                "notes_evidence": {
+                    "type": [
+                        "string",
+                        "null",
+                    ],
                 },
             },
             "required": [
                 "vehicle_type",
-                "vehicle_type_source",
+                "vehicle_type_evidence",
+                "notes",
+                "notes_evidence",
             ],
         }
 
-        try:
+    # ========================================================
+    # SEMANTIC VALIDATION
+    # ========================================================
 
-            result = self.llm.generate_structured(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                response_schema=schema,
-            )
+    @classmethod
+    def _grounded(
+        cls,
+        evidence: Any,
+        context: str,
+    ) -> str | None:
 
-        except Exception as exc:
-
-            print(
-                f"[QWEN] vehicle-type call failed for "
-                f"context={context!r}: {exc}"
-            )
-            result = {}
-
-        if not isinstance(result, dict):
-            result = {}
-
-        value = self._clean(
-            result.get("vehicle_type")
+        evidence = cls._clean(
+            evidence
         )
 
-        source = self._clean(
-            result.get("vehicle_type_source")
-        )
+        if not evidence:
+            return None
 
-        # ----------------------------------------------------
-        # GENERAL FALLBACK:
-        # If Qwen fails to classify the context, ask a second,
-        # much smaller semantic question. This is not a
-        # whitelist or blacklist.
-        # ----------------------------------------------------
+        if (
+            cls._compact(
+                evidence
+            )
+            not in cls._compact(
+                context
+            )
+        ):
+            return None
+
+        return evidence
+
+    @classmethod
+    def _safe_value(
+        cls,
+        value: Any,
+        evidence: str,
+    ) -> str | None:
+
+        value = cls._clean(
+            value
+        )
 
         if not value:
-            retry_system_prompt = """
-أنت تصنف نصًا واحدًا فقط.
+            return None
 
-هل CONTEXT يمثل اسم نوع/فئة مركبة؟
+        source_tokens = (
+            evidence.split()
+        )
 
-- إذا نعم: أعد اسم نوع المركبة في vehicle_type.
-- إذا كان هناك خطأ ناتج عن Speech-to-Text وكان التصحيح واضحًا جدًا،
-  صحح الاسم فقط.
-- إذا لا: أعد vehicle_type فارغًا.
-- لا تستخرج الملاحظات.
-- لا تستخرج الشركة المصنعة أو الموديل أو اللون كـ vehicle_type.
-- لا تستخدم whitelist أو blacklist.
+        value_tokens = (
+            value.split()
+        )
 
-أعد JSON فقط.
-"""
+        if abs(
+            len(value_tokens)
+            - len(source_tokens)
+        ) > 2:
+            return evidence
 
-            retry_user_prompt = (
-                "CONTEXT:\n"
-                f"{context}\n"
-                "هل هذا نوع مركبة؟"
+        if len(value) > max(
+            len(evidence) + 32,
+            int(
+                len(evidence)
+                * 2.0
+            ) + 8,
+        ):
+            return evidence
+
+        return value
+
+    @classmethod
+    def _validate_semantic(
+        cls,
+        raw: Any,
+        context: str,
+    ) -> dict[str, Any]:
+
+        result = {
+            "vehicle_type": None,
+            "vehicle_type_evidence": None,
+            "notes": None,
+        }
+
+        if (
+            not isinstance(
+                raw,
+                dict,
             )
+            or not context
+        ):
+            return result
 
-            retry_schema = {
-                "type": "object",
-                "properties": {
-                    "vehicle_type": {
-                        "type": "string",
-                    },
-                },
-                "required": [
-                    "vehicle_type",
-                ],
-            }
-
-            try:
-                retry_result = self.llm.generate_structured(
-                    system_prompt=retry_system_prompt,
-                    user_prompt=retry_user_prompt,
-                    response_schema=retry_schema,
-                )
-            except Exception as exc:
-                print(
-                    f"[QWEN] vehicle-type retry failed for "
-                    f"context={context!r}: {exc}"
-                )
-                retry_result = {}
-
-            if isinstance(retry_result, dict):
-                retry_value = self._clean(
-                    retry_result.get("vehicle_type")
-                )
-
-                if retry_value:
-                    value = retry_value
-
-                    # Keep the observed context as evidence.
-                    source = context
-
-        # ----------------------------------------------------
-        # Apply conservative semantic correction.
-        # ----------------------------------------------------
-
-        vehicle_type, grounded_source = (
-            self._normalize_vehicle_type(
-                value,
-                source,
+        type_evidence = (
+            cls._grounded(
+                raw.get(
+                    "vehicle_type_evidence"
+                ),
                 context,
             )
         )
 
-        return {
-            "vehicle_type":
-                vehicle_type,
-
-            "source":
-                grounded_source,
-        }
-
-    # ========================================================
-    # SAFE NOTE CORRECTIONS
-    # ========================================================
-
-    @staticmethod
-    def _apply_safe_note_corrections(
-        text: str,
-    ) -> str:
-
-        if not text:
-            return text
-
-        text = " ".join(
-            text.split()
+        note_evidence = (
+            cls._grounded(
+                raw.get(
+                    "notes_evidence"
+                ),
+                context,
+            )
         )
 
-        # ----------------------------------------------------
-        # Arabic ASR correction:
-        #
-        # "جراش ... اخر الشهر"
-        #
-        # -> "جراش ... اخر الشارع"
-        #
-        # We ONLY change "الشهر" when it is preceded by
-        # "اخر" and the note starts with/contains "جراش".
-        #
-        # We do NOT globally replace every "الشهر".
-        # ----------------------------------------------------
+        vehicle_type = (
+            cls._safe_value(
+                raw.get(
+                    "vehicle_type"
+                ),
+                type_evidence,
+            )
+            if type_evidence
+            else None
+        )
 
+        notes = (
+            cls._safe_value(
+                raw.get(
+                    "notes"
+                ),
+                note_evidence,
+            )
+            if note_evidence
+            else None
+        )
+
+        # One evidence span cannot belong to both fields.
         if (
-            "جراش" in text
-            and "اخر الشهر" in text
+            type_evidence
+            and note_evidence
+            and cls._compact(
+                type_evidence
+            )
+            == cls._compact(
+                note_evidence
+            )
         ):
+            notes = None
+            note_evidence = None
 
-            text = text.replace(
-                "اخر الشهر",
-                "اخر الشارع",
-            )
+        if not type_evidence:
+            vehicle_type = None
 
-        if (
-            "جراش" in text
-            and "آخر الشهر" in text
-        ):
+        if not note_evidence:
+            notes = None
 
-            text = text.replace(
-                "آخر الشهر",
-                "آخر الشارع",
-            )
+        result[
+            "vehicle_type"
+        ] = vehicle_type
 
-        return text
+        result[
+            "vehicle_type_evidence"
+        ] = type_evidence
 
-    # ========================================================
-    # NOTES SAFETY VALIDATION
-    # ========================================================
+        result[
+            "notes"
+        ] = notes
 
-    @staticmethod
-    def _safe_note_correction(
-        original: str,
-        corrected: str | None,
-    ) -> str:
-
-        if not original:
-            return ""
-
-        if not corrected:
-            return original
-
-        original = " ".join(
-            original.split()
-        )
-
-        corrected = " ".join(
-            corrected.split()
-        )
-
-        # ----------------------------------------------------
-        # First apply deterministic safe corrections to the
-        # original text.
-        # ----------------------------------------------------
-
-        deterministic = (
-            VehicleExtractionService
-            ._apply_safe_note_corrections(
-                original
-            )
-        )
-
-        # If deterministic correction changed the note,
-        # prefer it.
-        if deterministic != original:
-            return deterministic
-
-        # ----------------------------------------------------
-        # For any future LLM correction, enforce the strict
-        # token-count rule.
-        #
-        # This prevents Qwen from inventing an entire note.
-        # ----------------------------------------------------
-
-        original_tokens = (
-            original.split()
-        )
-
-        corrected_tokens = (
-            corrected.split()
-        )
-
-        if len(
-            original_tokens
-        ) != len(
-            corrected_tokens
-        ):
-            return original
-
-        changed = sum(
-            1
-            for old, new in zip(
-                original_tokens,
-                corrected_tokens,
-            )
-            if old != new
-        )
-
-        if changed > 2:
-            return original
-
-        return corrected
+        return result
 
     # ========================================================
-    # NOTES
-    #
-    # ONE VEHICLE PER CALL
+    # SINGLE CONTEXT SEMANTIC EXTRACTION
     # ========================================================
 
-    def _clean_notes_for_car(
+    def _semantic_for_context(
         self,
         plate_number: str,
         context: str,
-    ) -> str | None:
+    ) -> dict[str, Any]:
 
         if not context:
-            return None
-
-        # ----------------------------------------------------
-        # Deterministic correction first.
-        # ----------------------------------------------------
-
-        deterministic = (
-            self._apply_safe_note_corrections(
-                context
-            )
-        )
-
-        # ----------------------------------------------------
-        # If the deterministic correction already fixed the
-        # only known ASR problem, return it directly.
-        # ----------------------------------------------------
-
-        if deterministic != context:
-            return deterministic
-
-        system_prompt = """
-أنت تنظف notes الخاصة بمركبة واحدة فقط.
-
-مهمتك الوحيدة تصحيح أخطاء Speech-to-Text الواضحة داخل
-النص الموجود.
-
-ممنوع:
-- إضافة معلومات جديدة
-- حذف معلومات
-- اختراع ملاحظة
-- استخراج vehicle_type
-- استخراج plate_number
-- تغيير عدد الكلمات
-
-إذا لم تكن متأكدًا:
-أعد النص نفسه.
-
-مثال:
-
-جراش يمين اخر الشهر
-
-إذا احتجت تصحيحه:
-
-جراش يمين اخر الشارع
-
-لكن لا تضف أي كلمات أخرى.
-"""
+            return {
+                "vehicle_type": None,
+                "vehicle_type_evidence": None,
+                "notes": None,
+            }
 
         user_prompt = (
-            "PLATE:\n"
+            "PLATE (reference only):\n"
             f"{plate_number}\n\n"
-            "NOTES:\n"
-            f"{context}\n"
+            "CONTEXT:\n"
+            f"{context}\n\n"
+            "Classify the context. "
+            "Return only the JSON object "
+            "required by the schema."
         )
-
-        schema = {
-            "type": "object",
-            "properties": {
-                "notes": {
-                    "type": "string",
-                },
-            },
-            "required": [
-                "notes",
-            ],
-        }
 
         try:
 
-            result = self.llm.generate_structured(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                response_schema=schema,
+            raw = (
+                self.llm.generate_structured(
+                    system_prompt=(
+                        self._semantic_prompt()
+                    ),
+                    user_prompt=user_prompt,
+                    response_schema=(
+                        self._semantic_schema()
+                    ),
+                    retries=1,
+                )
             )
 
         except Exception:
 
-            return context
+            raw = {}
 
-        if not isinstance(
-            result,
-            dict,
+        validated = (
+            self._validate_semantic(
+                raw,
+                context,
+            )
+        )
+        # ====================================================
+        # SPLIT VEHICLE TYPE FROM TRAILING DESCRIPTION
+        # ====================================================
+
+        if (
+            validated["vehicle_type"]
+            and validated["notes"] is None
         ):
+            vehicle_type = validated["vehicle_type"]
+            type_evidence = validated["vehicle_type_evidence"]
 
-            return context
+            if type_evidence:
+                type_tokens = type_evidence.split()
 
-        corrected = self._clean(
-            result.get(
-                "notes"
-            )
-        )
-
-        if not corrected:
-            return context
-
-        return self._safe_note_correction(
-            context,
-            corrected,
-        )
-
-    # ========================================================
-    # REMOVE VEHICLE TYPE SOURCE FROM NOTES
-    # ========================================================
-
-    @staticmethod
-    def _remove_vehicle_type_source(
-        context: str,
-        source: str | None,
-    ) -> str:
-
-        if not context:
-            return ""
-
-        if not source:
-            return context
-
-        context_tokens = (
-            context.split()
-        )
-
-        source_tokens = (
-            source.split()
-        )
-
-        if not source_tokens:
-            return context
-
-        source_compact = "".join(
-            source_tokens
-        )
-
-        source_len = len(
-            source_tokens
-        )
-
-        for i in range(
-            len(context_tokens)
-            - source_len
-            + 1
-        ):
-
-            window = context_tokens[
-                i:
-                i + source_len
-            ]
-
-            window_compact = "".join(
-                window
-            )
-
-            if (
-                window_compact
-                == source_compact
-            ):
-
-                del context_tokens[
-                    i:
-                    i + source_len
-                ]
-
-                break
-
-        return " ".join(
-            context_tokens
-        ).strip()
-
-    # ========================================================
-    # TIMESTAMPS
-    # ========================================================
-
-    @staticmethod
-    def _timestamp_fields(
-        candidate,
-    ) -> tuple[int, int, int]:
-
-        start_seconds = max(
-            float(candidate.start),
-            0.0,
-        )
-
-        end_seconds = max(
-            float(candidate.end),
-            start_seconds,
-        )
-
-        start_ms = int(
-            round(start_seconds * 1000.0)
-        )
-
-        end_ms = int(
-            round(end_seconds * 1000.0)
-        )
-
-        timestamp_ms = int(
-            round(
-                (start_ms + end_ms) / 2.0
-            )
-        )
-
-        return (
-            timestamp_ms,
-            start_ms,
-            end_ms,
-        )
-
-
-    # ========================================================
-    # CORRECTIONS
-    # ========================================================
-
-    @staticmethod
-    def _detect_corrections(
-        tokens: list[TranscriptToken],
-        candidates: list,
-    ) -> list[dict]:
-
-        corrections = []
-
-        for i, token in enumerate(
-            tokens
-        ):
-
-            if (
-                token.text.strip()
-                != "تعديل"
-            ):
-                continue
-
-            following = []
-
-            for candidate_index, candidate in enumerate(
-                candidates
-            ):
-
-                if (
-                    candidate.token_start
-                    > i
-                ):
-
-                    following.append(
-                        (
-                            candidate_index,
-                            candidate,
-                        )
-                    )
-
-            if not following:
-                continue
-
-            first_index, first_candidate = (
-                following[0]
-            )
-
-            specific_found = False
-
-            # ------------------------------------------------
-            # تعديل OLD إلى NEW
-            # ------------------------------------------------
-
-            for second_index, second_candidate in following[1:]:
-
-                between = [
-                    tokens[j].text
-                    for j in range(
-                        first_candidate.token_end + 1,
-                        second_candidate.token_start,
-                    )
-                ]
-
-                between_set = {
-                    word.strip()
-                    for word in between
-                }
-
-                if (
-                    "إلى" in between_set
-                    or
-                    "الى" in between_set
-                ):
-
-                    corrections.append(
-                        {
-                            "type":
-                                "specific",
-
-                            "old_index":
-                                first_index,
-
-                            "new_index":
-                                second_index,
-                        }
-                    )
-
-                    specific_found = True
-                    break
-
-            # ------------------------------------------------
-            # تعديل NEW
-            # ------------------------------------------------
-
-            if not specific_found:
-
-                corrections.append(
-                    {
-                        "type":
-                            "latest",
-
-                        "new_index":
-                            first_index,
+                if len(type_tokens) >= 2:
+                    split_words = {
+                        "حادث",
+                        "مصدوم",
+                        "مصدومه",
+                        "مصدومة",
+                        "مركونه",
+                        "مركونة",
+                        "متربه",
+                        "متربة",
+                        "متحرك",
+                        "مطربه",
+                        "مطربة",
                     }
+
+                    split_at = None
+
+                    for index in range(1, len(type_tokens)):
+                        if type_tokens[index] in split_words:
+                            split_at = index
+                            break
+
+                    if split_at is not None:
+                        clean_type_evidence = " ".join(
+                            type_tokens[:split_at]
+                        )
+
+                        note_evidence = " ".join(
+                            type_tokens[split_at:]
+                        )
+
+                        validated["vehicle_type"] = clean_type_evidence
+                        validated["vehicle_type_evidence"] = (
+                            clean_type_evidence
+                        )
+
+                        validated["notes"] = note_evidence
+        # ====================================================
+        # SECOND OPINION
+        # ====================================================
+
+        if (
+            not validated[
+                "vehicle_type"
+            ]
+            or not validated[
+                "vehicle_type_evidence"
+            ]
+        ):
+
+            review_schema = {
+                "type": "object",
+                "properties": {
+                    "vehicle_type": {
+                        "type": [
+                            "string",
+                            "null",
+                        ],
+                    },
+                    "evidence": {
+                        "type": [
+                            "string",
+                            "null",
+                        ],
+                    },
+                },
+                "required": [
+                    "vehicle_type",
+                    "evidence",
+                ],
+            }
+
+            try:
+
+                review = (
+                    self.llm.generate_structured(
+                        system_prompt=(
+                            "Find the clearest vehicle "
+                            "type in CONTEXT.\n\n"
+                            "A vehicle type may be one "
+                            "word or multiple words.\n\n"
+                            "If a multi-word phrase expresses "
+                            "the vehicle type, return the "
+                            "COMPLETE phrase, not a shorter "
+                            "substring.\n\n"
+                            "For example, if CONTEXT contains "
+                            "'نقل عام', return 'نقل عام', "
+                            "not only 'نقل'.\n\n"
+                            "If CONTEXT contains a clear "
+                            "vehicle type such as 'ونيت', "
+                            "return it as vehicle_type.\n\n"
+                            "Do not use a whitelist.\n\n"
+                            "Manufacturer, model, color, "
+                            "condition, direction and location "
+                            "are not vehicle_type.\n\n"
+                            "Evidence must be copied exactly "
+                            "from CONTEXT.\n\n"
+                            "ASR normalization is allowed only "
+                            "when the intended vehicle type is "
+                            "very clear.\n\n"
+                            "No guessing."
+                        ),
+                        user_prompt=(
+                            f"CONTEXT:\n{context}"
+                        ),
+                        response_schema=(
+                            review_schema
+                        ),
+                        retries=1,
+                    )
                 )
 
-        return corrections
+            except Exception:
+
+                review = {}
+
+            evidence = (
+                self._grounded(
+                    (
+                        review.get(
+                            "evidence"
+                        )
+                        if isinstance(
+                            review,
+                            dict,
+                        )
+                        else None
+                    ),
+                    context,
+                )
+            )
+
+            value = (
+                self._safe_value(
+                    (
+                        review.get(
+                            "vehicle_type"
+                        )
+                        if isinstance(
+                            review,
+                            dict,
+                        )
+                        else None
+                    ),
+                    evidence,
+                )
+                if evidence
+                else None
+            )
+
+            if value and evidence:
+
+                validated[
+                    "vehicle_type"
+                ] = value
+
+                validated[
+                    "vehicle_type_evidence"
+                ] = evidence
+
+                if (
+                    validated[
+                        "notes"
+                    ]
+                    and self._compact(
+                        validated[
+                            "notes"
+                        ]
+                    )
+                    == self._compact(
+                        evidence
+                    )
+                ):
+                    validated[
+                        "notes"
+                    ] = None
+
+        return validated
 
     # ========================================================
     # APPLY CORRECTIONS
@@ -1069,119 +1788,71 @@ CONTEXT: نقل عام حادث
     @staticmethod
     def _apply_corrections(
         cars: list[Vehicle],
-        corrections: list[dict],
-        candidates: list,
+        corrections: list[dict[str, Any]],
     ) -> list[Vehicle]:
 
         result = cars.copy()
 
         for correction in corrections:
 
-            # ------------------------------------------------
-            # تعديل NEW
-            # ------------------------------------------------
-
-            if (
-                correction["type"]
-                == "latest"
-            ):
-
-                new_index = (
-                    correction[
-                        "new_index"
-                    ]
+            correction_type = (
+                correction.get(
+                    "type"
                 )
+            )
 
-                if (
-                    new_index
-                    >= len(candidates)
-                ):
-                    continue
+            # =================================================
+            # LATEST
+            #
+            # IMPORTANT:
+            # This function is no longer used to blindly modify
+            # result[-1].
+            #
+            # The latest correction is applied to normalized
+            # candidates BEFORE semantic extraction.
+            #
+            # This method exists only for compatibility and
+            # specific corrections.
+            # =================================================
 
-                new_plate = (
-                    normalize_plate_from_text(
-                        candidates[
-                            new_index
-                        ].text
-                    )
-                )
+            if correction_type == "latest":
+                continue
 
-                if not new_plate:
-                    continue
+            # =================================================
+            # SPECIFIC
+            # =================================================
 
-                if result:
-
-                    result[-1] = (
-                        result[-1].model_copy(
-                            update={
-                                "plate_number":
-                                    new_plate
-                            }
-                        )
-                    )
-
-            # ------------------------------------------------
-            # تعديل OLD إلى NEW
-            # ------------------------------------------------
-
-            else:
-
-                old_index = (
-                    correction[
-                        "old_index"
-                    ]
-                )
-
-                new_index = (
-                    correction[
-                        "new_index"
-                    ]
-                )
-
-                if (
-                    old_index
-                    >= len(candidates)
-                    or
-                    new_index
-                    >= len(candidates)
-                ):
-                    continue
+            if correction_type == "specific":
 
                 old_plate = (
-                    normalize_plate_from_text(
-                        candidates[
-                            old_index
-                        ].text
+                    correction.get(
+                        "old_plate"
                     )
                 )
 
                 new_plate = (
-                    normalize_plate_from_text(
-                        candidates[
-                            new_index
-                        ].text
+                    correction.get(
+                        "new_plate"
                     )
                 )
 
                 if (
                     not old_plate
-                    or
-                    not new_plate
+                    or not new_plate
                 ):
                     continue
 
-                for i, car in enumerate(
+                for index, car in enumerate(
                     result
                 ):
 
                     if (
                         car.plate_number
-                        ==
-                        old_plate
+                        == old_plate
                     ):
 
-                        result[i] = (
-                            result[i].model_copy(
+                        result[index] = (
+                            car.model_copy(
                                 update={
                                     "plate_number":
                                         new_plate
@@ -1194,6 +1865,174 @@ CONTEXT: نقل عام حادث
         return result
 
     # ========================================================
+    # APPLY CORRECTIONS TO NORMALIZED PLATES
+    # ========================================================
+
+    @staticmethod
+    def _apply_corrections_to_normalized(
+        normalized: list[dict[str, Any]],
+        corrections: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """
+        Apply corrections to the existing real vehicle occurrence.
+
+        For latest correction:
+
+            تعديل اخر لوحه الي NEW
+
+        update the latest vehicle that appeared BEFORE the command.
+
+        For specific correction:
+
+            تعديل اللوحة OLD إلى NEW
+
+        update the existing vehicle whose plate is OLD.
+
+        No new vehicle is ever created.
+        """
+
+        result = [
+            item.copy()
+            for item in normalized
+        ]
+
+        for correction in corrections:
+
+            correction_type = (
+                correction.get(
+                    "type"
+                )
+            )
+
+            # =================================================
+            # LATEST
+            # =================================================
+
+            if correction_type == "latest":
+
+                command_index = (
+                    correction.get(
+                        "command_index"
+                    )
+                )
+
+                new_plate = (
+                    correction.get(
+                        "new_plate"
+                    )
+                )
+
+                if (
+                    not isinstance(
+                        command_index,
+                        int,
+                    )
+                    or not new_plate
+                ):
+                    continue
+
+                target_index = None
+
+                # Search from the end because we need the most
+                # recent REAL vehicle before this command.
+                for index in range(
+                    len(result) - 1,
+                    -1,
+                    -1,
+                ):
+
+                    candidate = result[
+                        index
+                    ][
+                        "candidate"
+                    ]
+
+                    if (
+                        candidate.token_end
+                        < command_index
+                    ):
+                        target_index = index
+                        break
+
+                if target_index is not None:
+
+                    result[
+                        target_index
+                    ] = {
+                        **result[
+                            target_index
+                        ],
+                        "plate_number":
+                            new_plate,
+                    }
+
+                continue
+
+            # =================================================
+            # SPECIFIC
+            # =================================================
+
+            if correction_type == "specific":
+
+                old_plate = (
+                    correction.get(
+                        "old_plate"
+                    )
+                )
+
+                new_plate = (
+                    correction.get(
+                        "new_plate"
+                    )
+                )
+
+                if (
+                    not old_plate
+                    or not new_plate
+                ):
+                    continue
+
+                for index, item in enumerate(
+                    result
+                ):
+
+                    if (
+                        item[
+                            "plate_number"
+                        ]
+                        == old_plate
+                    ):
+
+                        result[
+                            index
+                        ] = {
+                            **result[
+                                index
+                            ],
+                            "plate_number":
+                                new_plate,
+                        }
+
+                        break
+
+        return result
+
+    # ========================================================
+    # TIMESTAMPS
+    # ========================================================
+
+    @staticmethod
+    def _timestamp_fields(candidate: Any) -> tuple[int, int, int]:
+        start_seconds = max(float(candidate.start), 0.0)
+        end_seconds = max(float(candidate.end), start_seconds)
+
+        start_ms = int(round(start_seconds * 1000.0))
+        end_ms = int(round(end_seconds * 1000.0))
+
+        midpoint = int(round((start_ms + end_ms) / 2.0))
+
+        return midpoint, start_ms, end_ms
+    # ========================================================
     # MAIN
     # ========================================================
 
@@ -1204,12 +2043,19 @@ CONTEXT: نقل عام حادث
         recording_duration_ms: int = 0,
     ) -> VehicleExtractionResponse:
 
+        # ----------------------------------------------------
+        # Recording duration
+        # ----------------------------------------------------
+
         if recording_duration_ms <= 0:
+
             recording_duration_ms = int(
                 round(
                     max(
                         (
-                            float(segment.end)
+                            float(
+                                segment.end
+                            )
                             for segment in segments
                         ),
                         default=0.0,
@@ -1218,16 +2064,48 @@ CONTEXT: نقل عام حادث
                 )
             )
 
-        # ====================================================
-        # TOKENIZE
-        # ====================================================
+        # ----------------------------------------------------
+        # Tokenize transcript.
+        # ----------------------------------------------------
 
         tokens = tokenize_segments(
             segments
         )
 
+        if not tokens:
+
+            return VehicleExtractionResponse(
+                recording_duration_ms=max(
+                    int(
+                        recording_duration_ms
+                    ),
+                    0,
+                ),
+                cars=[],
+            )
+
         # ====================================================
-        # PLATE CANDIDATES
+        # STEP 1
+        #
+        # Detect corrections BEFORE normal vehicle extraction.
+        # ====================================================
+
+        corrections = (
+            self._detect_corrections(
+                tokens
+            )
+        )
+
+        correction_indexes = (
+            self._correction_token_indexes(
+                corrections
+            )
+        )
+
+        # ====================================================
+        # STEP 2
+        #
+        # Extract normal candidates.
         # ====================================================
 
         candidates = (
@@ -1240,61 +2118,47 @@ CONTEXT: نقل عام حادث
 
             return VehicleExtractionResponse(
                 recording_duration_ms=max(
-                    int(recording_duration_ms),
+                    int(
+                        recording_duration_ms
+                    ),
                     0,
                 ),
-                cars=[]
+                cars=[],
             )
 
-        # ====================================================
-        # CORRECTIONS
-        # ====================================================
-
-        corrections = (
-            self._detect_corrections(
-                tokens,
-                candidates,
-            )
-        )
-
-        correction_new_indexes = {
-            correction[
-                "new_index"
-            ]
-            for correction in corrections
-        }
-
-        # ====================================================
-        # NORMALIZE PLATES
-        # ====================================================
-
-        normalized = []
+        normalized: list[
+            dict[str, Any]
+        ] = []
 
         for candidate_index, candidate in enumerate(
             candidates
         ):
 
-            plate = (
-                normalize_plate_from_text(
-                    candidate.text
-                )
-            )
+            # ------------------------------------------------
+            # Ignore candidates inside correction commands.
+            # ------------------------------------------------
 
-            if plate is None:
-                continue
-
-            # Exactly 3 letters + 4 digits.
             if (
-                len(plate) != 7
-                or
-                not plate[-4:].isdigit()
+                self._candidate_overlaps_correction(
+                    candidate,
+                    correction_indexes,
+                )
             ):
                 continue
 
-            # "تعديل NEW" is not a separate vehicle.
-            if (
-                candidate_index
-                in correction_new_indexes
+            # ------------------------------------------------
+            # Revalidate candidate directly from its original
+            # token text.
+            # ------------------------------------------------
+
+            plate = (
+                self._normalize_candidate(
+                    candidate
+                )
+            )
+
+            if not self._is_valid_plate(
+                plate
             ):
                 continue
 
@@ -1302,30 +2166,22 @@ CONTEXT: نقل عام حادث
                 {
                     "plate_number":
                         plate,
-
                     "candidate":
                         candidate,
-
                     "candidate_index":
                         candidate_index,
                 }
             )
 
-        if not normalized:
-
-            return VehicleExtractionResponse(
-                recording_duration_ms=max(
-                    int(recording_duration_ms),
-                    0,
-                ),
-                cars=[]
-            )
-
         # ====================================================
-        # IMMEDIATE DUPLICATES
+        # STEP 3
+        #
+        # Consecutive duplicate removal.
         # ====================================================
 
-        unique = []
+        unique: list[
+            dict[str, Any]
+        ] = []
 
         for item in normalized:
 
@@ -1362,8 +2218,7 @@ CONTEXT: نقل عام حادث
 
             if (
                 same_plate
-                and
-                close_in_time
+                and close_in_time
             ):
                 continue
 
@@ -1373,22 +2228,54 @@ CONTEXT: نقل عام حادث
 
         normalized = unique
 
+        if not normalized:
+
+            return VehicleExtractionResponse(
+                recording_duration_ms=max(
+                    int(
+                        recording_duration_ms
+                    ),
+                    0,
+                ),
+                cars=[],
+            )
+
         # ====================================================
-        # CONTEXT
+        # STEP 4
+        #
+        # APPLY CORRECTIONS TO THE EXISTING VEHICLE OCCURRENCES
+        # ====================================================
+
+        normalized = (
+            self._apply_corrections_to_normalized(
+                normalized,
+                corrections,
+            )
+        )
+
+        # ====================================================
+        # STEP 5
+        #
+        # Build semantic contexts AFTER corrections.
         # ====================================================
 
         contexts = (
             self._build_vehicle_contexts(
                 tokens,
                 normalized,
+                corrections,
             )
         )
 
         # ====================================================
-        # FINAL CARS
+        # STEP 6
+        #
+        # Semantic extraction.
         # ====================================================
 
-        final_cars = []
+        final_cars: list[
+            Vehicle
+        ] = []
 
         for context_item in contexts:
 
@@ -1404,130 +2291,81 @@ CONTEXT: نقل عام حادث
                 ]
             )
 
-            # ------------------------------------------------
-            # VEHICLE TYPE
-            # ------------------------------------------------
-
-            vehicle_result = (
-                self._extract_vehicle_type_for_car(
+            semantic = (
+                self._semantic_for_context(
                     plate_number,
                     context,
                 )
             )
 
-            vehicle_type = (
-                vehicle_result[
-                    "vehicle_type"
+            (
+                timestamp_ms,
+                timestamp_start_ms,
+                timestamp_end_ms,
+            ) = self._timestamp_fields(
+                context_item[
+                    "_candidate"
                 ]
-            )
-
-            vehicle_source = (
-                vehicle_result[
-                    "source"
-                ]
-            )
-
-            # ------------------------------------------------
-            # REMOVE THE SOURCE OF VEHICLE TYPE
-            # FROM NOTES.
-            #
-            # Example:
-            #
-            # context = "نات"
-            # vehicle_type = "نقل"
-            # source = "نات"
-            #
-            # notes_context = ""
-            # ------------------------------------------------
-
-            notes_context = (
-                self._remove_vehicle_type_source(
-                    context,
-                    vehicle_source,
-                )
-            )
-
-            # ------------------------------------------------
-            # NOTES
-            # ------------------------------------------------
-
-            if notes_context:
-
-                notes = (
-                    self._clean_notes_for_car(
-                        plate_number,
-                        notes_context,
-                    )
-                )
-
-            else:
-
-                notes = None
-
-            # ------------------------------------------------
-            # FINAL SAFETY
-            # ------------------------------------------------
-
-            if (
-                vehicle_source
-                and
-                notes
-                and
-                notes.strip()
-                ==
-                vehicle_source.strip()
-            ):
-
-                notes = None
-
-            timestamp_ms, timestamp_start_ms, timestamp_end_ms = (
-                self._timestamp_fields(
-                    context_item["_candidate"]
-                )
             )
 
             final_cars.append(
                 Vehicle(
-                    plate_number=
-                        plate_number,
-
-                    timestamp_ms=
-                        timestamp_ms,
-
-                    timestamp_start_ms=
-                        timestamp_start_ms,
-
-                    timestamp_end_ms=
-                        timestamp_end_ms,
-
-                    vehicle_type=
-                        vehicle_type,
-
-                    notes=
-                        notes,
+                    plate_number=(
+                        plate_number
+                    ),
+                    timestamp_ms=(
+                        timestamp_ms
+                    ),
+                    timestamp_start_ms=(
+                        timestamp_start_ms
+                    ),
+                    timestamp_end_ms=(
+                        timestamp_end_ms
+                    ),
+                    vehicle_type=(
+                        self._clean(
+                            semantic.get(
+                                "vehicle_type"
+                            )
+                        )
+                    ),
+                    notes=(
+                        self._clean(
+                            semantic.get(
+                                "notes"
+                            )
+                        )
+                    ),
                 )
             )
 
         # ====================================================
-        # APPLY تعديل
+        # STEP 7
+        #
+        # Specific corrections are already applied to
+        # normalized before semantic extraction.
+        #
+        # This call is intentionally kept for compatibility,
+        # but latest corrections are skipped here.
         # ====================================================
 
         final_cars = (
             self._apply_corrections(
                 final_cars,
                 corrections,
-                candidates,
             )
         )
 
         # ====================================================
-        # RETURN
+        # FINAL RESPONSE
         # ====================================================
 
         return VehicleExtractionResponse(
             recording_duration_ms=max(
-                int(recording_duration_ms),
+                int(
+                    recording_duration_ms
+                ),
                 0,
             ),
-            cars=final_cars
+            cars=final_cars,
         )

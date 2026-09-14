@@ -223,3 +223,72 @@ final ,  final after the great success
                  └─────────┬──────────┘
                            ▼
                        FINAL JSON
+
+
+
+
+                    ┌───────────────┐
+Audio ─────────────>│      STT      │
+                    └───────┬───────┘
+                            │
+                            ▼
+                    Raw transcript
+                            │
+                            ▼
+              ┌────────────────────────┐
+              │ Candidate/Structure    │
+              │ Extraction             │
+              └────────────┬───────────┘
+                           │
+                 plate + surrounding text
+                           │
+                           ▼
+              ┌────────────────────────┐
+              │ Semantic Understanding │
+              │        (Qwen)           │
+              └────────────┬───────────┘
+                           │
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+          plate        vehicle_type    notes
+              │            │            │
+              └────────────┼────────────┘
+                           ▼
+                    Validation Layer
+                           │
+                           ▼
+                         JSON
+
+
+
+
+
+
+                    AUDIO
+                      │
+                      ▼
+                COHERE STT
+                      │
+                      ▼
+              RAW TRANSCRIPT
+                      │
+          ┌───────────┴───────────┐
+          ▼                       ▼
+   PLATE CANDIDATES        ASR SEMANTIC NORMALIZATION
+          │                       │
+          └───────────┬───────────┘
+                      ▼
+               VEHICLE CONTEXTS
+                      │
+                      ▼
+             QWEN SPAN CLASSIFIER
+                      │
+          ┌───────────┼───────────┐
+          ▼           ▼           ▼
+   VEHICLE_TYPE      NOTE       DISCARD
+          │
+          ▼
+      VALIDATION
+          │
+          ▼
+      FINAL JSON

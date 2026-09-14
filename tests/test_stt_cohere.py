@@ -2,7 +2,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.services.stt import (
-    SpeechToTextService,
+    STTService,
 )
 
 
@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(
 AUDIO_PATH = (
     PROJECT_ROOT
     / "tests"
-    / "sample2.aac"
+    / "sample4.m4a"
 )
 
 
@@ -35,7 +35,7 @@ def main():
 
     print()
 
-    stt = SpeechToTextService()
+    stt = STTService()
 
     print("=" * 60)
     print("TRANSCRIPT")

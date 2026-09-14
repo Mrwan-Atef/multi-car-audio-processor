@@ -7,7 +7,7 @@ import soundfile as sf
 import torch
 
 from app.core.config import settings
-from app.models.transcript import TranscriptSegment, TranscriptResponse
+from app.schemas.transcript import TranscriptSegment, TranscriptResponse
 from app.services.audio import convert_to_pcm_wav
 from app.services.vad import SpeechRegion, VADService
 

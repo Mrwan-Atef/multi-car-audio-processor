@@ -28,7 +28,7 @@ MODEL_PATH = (
 AUDIO_PATH = (
     PROJECT_ROOT
     / "tests"
-    / "sample2.aac"
+    / "sample4.m4a"
 )
 
 

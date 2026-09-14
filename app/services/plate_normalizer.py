@@ -68,6 +68,22 @@ TENS_WORDS = {
     "تسعين": "90", "تسعون": "90",
 }
 
+COMPOUND_NUMBER_WORDS = {
+    "حداشر": "11",
+    "أحداشر": "11",
+    "احداشر": "11",
+    "اتناشر": "12",
+    "اتناعشر": "12",
+    "تلتاشر": "13",
+    "تلاتاشر": "13",
+    "اربعتاشر": "14",
+    "خمستاشر": "15",
+    "ستاشر": "16",
+    "سبعتاشر": "17",
+    "تمنتاشر": "18",
+    "تسعتاشر": "19",
+}
+
 ONES_VALUES = {k: int(v) for k, v in DIGIT_WORDS.items() if v != "0"}
 
 
@@ -88,22 +104,76 @@ def is_digit_token(token: str) -> bool:
     return normalize_digit_token(token) is not None
 
 
-def normalize_number_expression(tokens: list[str], start: int) -> tuple[str | None, int]:
+def normalize_number_expression(
+    tokens: list[str],
+    start: int,
+) -> tuple[str | None, int]:
+
     if start >= len(tokens):
         return None, start
 
-    first = _clean_token(tokens[start])
+    first = _clean_token(
+        tokens[start]
+    )
+
+    # --------------------------------------------------------
+    # Compound numbers:
+    #
+    # حداشر -> 11
+    # اتناشر -> 12
+    # ...
+    # --------------------------------------------------------
+
+    if first in COMPOUND_NUMBER_WORDS:
+        return (
+            COMPOUND_NUMBER_WORDS[first],
+            start + 1,
+        )
+
+    # --------------------------------------------------------
+    # one + و + tens
+    #
+    # سبعة وسبعين -> 77
+    # أربعة وستين -> 64
+    # --------------------------------------------------------
 
     if start + 2 < len(tokens):
-        second = _clean_token(tokens[start + 1])
-        third = _clean_token(tokens[start + 2])
-        if first in ONES_VALUES and second in {"و", "وَ"} and third in TENS_WORDS:
-            return str(int(TENS_WORDS[third]) + ONES_VALUES[first]), start + 3
 
-    value = normalize_digit_token(first)
+        second = _clean_token(
+            tokens[start + 1]
+        )
+
+        third = _clean_token(
+            tokens[start + 2]
+        )
+
+        if (
+            first in ONES_VALUES
+            and second == "و"
+            and third in TENS_WORDS
+        ):
+
+            value = (
+                int(TENS_WORDS[third])
+                + ONES_VALUES[first]
+            )
+
+            return (
+                str(value),
+                start + 3,
+            )
+
+    value = normalize_digit_token(
+        first
+    )
+
     if value is None:
         return None, start
-    return value, start + 1
+
+    return (
+        value,
+        start + 1,
+    )
 
 
 def normalize_digits_from_tokens(tokens: list[str]) -> str | None:

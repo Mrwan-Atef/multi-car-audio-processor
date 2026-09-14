@@ -25,224 +25,108 @@
 ر ا ر 1331 جراش يمين اخر الشارع
 ر ا ب ر ا ب 6403 
 ===============================================================================================================
+test 1 :
+the actual record :
 
-HAAAAAAAAAPY 
+ب ط ص ب ط ص 5745 نقل ر ر م 8992  ر م ك ر م ك 3654  ب ه ح ب ه ح 1935 جراش واحد يمين   د ن ن 6442 جراش واحد يمين د ه س 4726 جراش واحد يمين د و ع 2546  د ا ع 6298 ح ع ح 5066 ح ن س 5385 ر ع و 1626 ر ع و 1626 ح و ي 2568 جراش واحد يمين ح ع ك 4731 ح ب و 1935 ب ع م 2843 د ن م 7960    ر ص ط  ر ص ط 2423  ا ن ل 1024 نقل ح س  ي 3015 جراش يمين اخر الشارع ر ا ر 1331 جراش يمين اخر الشارع ر ا ب ر ا ب 6403 
 
+cohere :
 
+Preparing long-form audio...
 
-============================================================
-FINAL JSON
-============================================================
-{
-  "cars": [
-    {
-      "plate_number": "بطص5745",
-      "vehicle_type": "نقل",
-      "notes": null
-    },
-    {
-      "plate_number": "ررم8992",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "رمك3654",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "بهح1935",
-      "vehicle_type": null,
-      "notes": "جراش واحد يمين"
-    },
-    {
-      "plate_number": "دنن6442",
-      "vehicle_type": null,
-      "notes": "جراش واحد يمين"
-    },
-    {
-      "plate_number": "دهس4726",
-      "vehicle_type": null,
-      "notes": "جراش واحد يمين"
-    },
-    {
-      "plate_number": "دوع2546",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "داع6298",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "حنس5385",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "رعو1626",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "حوي2568",
-      "vehicle_type": null,
-      "notes": "جراش واحد يمين"
-    },
-    {
-      "plate_number": "حعك4731",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "حبو1935",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "بعم2843",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "دنم7960",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "رصط2423",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "انل1024",
-      "vehicle_type": null,
-      "notes": "نات"
-    },
-    {
-      "plate_number": "حسي3015",
-      "vehicle_type": null,
-      "notes": "جراش يمين آخر الشهر"
-    },
-    {
-      "plate_number": "رار1331",
-      "vehicle_type": null,
-      "notes": "جراش يمين آخر الشهر"
-    },
-    {
-      "plate_number": "راب6403",
-      "vehicle_type": null,
-      "notes": null
-    }
-  ]
+Detected 5 audio chunks.
 
+Transcribing...
+This may take several minutes on CPU.
 
+======================================================================
+COMPLETE TRANSCRIPT
+======================================================================
 
-============================================================
-FINAL JSON
-============================================================
-{
-  "cars": [
-    {
-      "plate_number": "بطص5745",
-      "vehicle_type": "نقل",
-      "notes": null
-    },
-    {
-      "plate_number": "ررم8992",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "رمك3654",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "بهح1935",
-      "vehicle_type": null,
-      "notes": "جراش واحد يمين"
-    },
-    {
-      "plate_number": "دنن6442",
-      "vehicle_type": null,
-      "notes": "جراش واحد يمين"
-    },
-    {
-      "plate_number": "دهس4726",
-      "vehicle_type": null,
-      "notes": "جراش واحد يمين"
-    },
-    {
-      "plate_number": "دوع2546",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "داع6298",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "حنس5385",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "رعو1626",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "حوي2568",
-      "vehicle_type": null,
-      "notes": "جراش واحد يمين"
-    },
-    {
-      "plate_number": "حعك4731",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "حبو1935",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "بعم2843",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "دنم7960",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "رصط2423",
-      "vehicle_type": null,
-      "notes": null
-    },
-    {
-      "plate_number": "انل1024",
-      "vehicle_type": "نقل",
-      "notes": null
-    },
-    {
-      "plate_number": "حسي3015",
-      "vehicle_type": null,
-      "notes": "جراش يمين اخر الشارع"
-    },
-    {
-      "plate_number": "رار1331",
-      "vehicle_type": null,
-      "notes": "جراش يمين اخر الشارع"
-    },
-    {
-      "plate_number": "راب6403",
-      "vehicle_type": null,
-      "notes": null
-    }
-  ]
-}
+ب ط ص ب ط ص خمسة سبعة أربعة خمسة نقل را را ميم تمانية تسعة تسعة اثنين را ميم كاف را ميم كاف تلاتة ستة خمسة أربعة بهي حا بهي حا واحد تسعة تلاتة خمسة جراش واحد يمين دا نون نون ستة أربعة أربعة اثنين جراش واحد يمين ده اله س اربعة سبعة اتنين ست جراش واحد يمين ده الواو ع اتنين خمسة اربعة ست ده الالف ع ستة اتنين تسعة تمانية ح ع خمسين ستة ست  ح نون سين خمسة تلاتة تمانية خمس راع نون واحد ستة اتنين ست را عين واو واحد سته اثنين سته حوا وياء اتنين خمسه سته تمانيه جراش واحد يمين ح عين كيف اربعه سبعه تلاته واحد ح ب واو واحد تسعه تلاته خمسه بيع ميم اتنين تمانية اربعة تلاتة  د نون ميم سبعة تسعة ستين راه صوت طه  <hesitation> راه صوت طه اتنين اربعة اتنين تلاتة  أ نو لام عشرة اتنين اربعة نات  حاسن يا تلاتين واحد خمس جراش يمين اخر الشهر را ا ر واحد تلات تلاتة واحد جراش يمين اخر الشهر "رالب ب" رالب ب "ستة اربعة زيرو تلاتة"
+
+======================================================================
+PERFORMANCE
+======================================================================
+Audio duration : 145.64 sec
+Inference time : 255.48 sec
+RTFx           : 0.57
+=====================================================================================================
+test 2:
+the actual record :
+ر و ب ر و ب 1729
+cohere :
+
+Loading audio...
+Audio duration: 8.17 seconds
+
+Preparing long-form audio...
+
+Detected 1 audio chunks.
+
+Transcribing...
+This may take several minutes on CPU.
+
+======================================================================
+COMPLETE TRANSCRIPT
+======================================================================
+
+آو ب راه واو ب واحد سبعة تنين تسعة
+
+======================================================================
+PERFORMANCE
+======================================================================
+Audio duration : 8.17 sec
+Inference time : 15.70 sec
+RTFx           : 0.52
+
+===============================================================================================================
+test 3 : 
+the actual record :
+ا ع ا  1234دوكر حادث  ا س ي 1254  تعديل ا ع ا 1234 الي ا ع ا 1244
+cohere :
+
+Preparing long-form audio...
+
+Detected 1 audio chunks.
+
+Transcribing...
+This may take several minutes on CPU.
+
+======================================================================
+COMPLETE TRANSCRIPT
+======================================================================
+
+ألف عين ألف واحد اتنين تلاتة أربعة دوقر حادث ألف سين يه واحد اتنين خمسة أربعة تعديل ألف عين ألف واحد اتنين تلاتة أربعة إلى ألف عين ألف واحد اتنين أربعة أربعة
+
+======================================================================
+PERFORMANCE
+======================================================================
+Audio duration : 21.77 sec
+Inference time : 53.92 sec
+RTFx           : 0.40
+============================================================================================================================================
+test 4 : 
+the actual record :
+ح ع ح 5077 ب ط ص 1234 نقل ع ا د شاص متربة ه ن ي اتوبيس ا ا ا نقل عام مصدومة ع د و فان  س ص ط كوستر ا ع ا  فان بضاعة ا ن ا هاي اس تعديل ا ن ي هاي اس ب ط ص 
+
+cohere :
+reparing long-form audio...
+
+Detected 3 audio chunks.
+
+Transcribing...
+This may take several minutes on CPU.
+
+======================================================================
+COMPLETE TRANSCRIPT
+======================================================================
+
+ح ع ح خمسين سبعة سبعة ب طه ص واحد اتنين تلاتة اربعة نقل ع ا د شاص مطربة ه ن ي اتوبيس ا ا نقل عام مصدومة ع د واو فان س س سطه كستر ا ع فان بضاعة ا ن هاي اس تعديل ا ن ي هاي اس بإختصاص
+
+======================================================================
+PERFORMANCE
+======================================================================
+Audio duration : 67.45 sec
+Inference time : 138.70 sec
+RTFx           : 0.49
