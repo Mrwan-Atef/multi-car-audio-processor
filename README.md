@@ -1,8 +1,8 @@
 # Multi-Car Audio Processor — Batch AI Service
 The project works with arbic audios to extract some vehicles infos , espicially 3 mean sections :
-1- plate num ( 4 nums and 3 arbic latters)
-2- dedicated pre-difined attrinutes : (كوستر , ونبد , شاص ...) ---> i saw the use  of LowRA will be more efficient but i faced a technical debit (computing power)
-3- some notes related to the car's state 
+1. plate num ( 4 nums and 3 arbic latters)
+2. dedicated pre-difined attrinutes : (كوستر , ونبد , شاص ...) ---> i saw the use  of LowRA will be more efficient but i faced a technical debit (computing power)
+3. some notes related to the car's state 
 *look at the architecture file for more info*
 This repository contains the isolated AI service used by the .NET backend.
 
